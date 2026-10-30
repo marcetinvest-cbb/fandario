@@ -63,7 +63,7 @@ export function BetCard({ bet, showName, onTail, meId }: { bet: Bet; showName?: 
   );
 }
 
-const FEED_ICON: Record<string, string> = { bet: '🎟️', won: '💰', lost: '💀', badbeat: '😭', sweat: '😰', result: '📣', void: '↺', boost: '🔥', newline: '🚨', move: '📈', lock: '🔒', unlock: '🔓', join: '👋', adjust: '🏦', reopen: '⚠️' };
+const FEED_ICON: Record<string, string> = { bet: '🎟️', won: '💰', lost: '💀', badbeat: '😭', sweat: '😰', result: '📣', void: '↺', boost: '🔥', newline: '🚨', move: '📈', lock: '🔒', unlock: '🔓', join: '👋', adjust: '🏦', reopen: '⚠️', pitch: '💡' };
 
 export default function App() {
   const [s, setS] = useState<any>(null);
@@ -219,6 +219,7 @@ export default function App() {
               </div>
             ))}
             {!openMarkets.length && <p className="center muted" style={{ marginTop: 40 }}>No open lines. The commish is cooking.</p>}
+            <PitchForm mine={s.myPitches} onSent={(m) => { flash(m); load(); }} />
             {graded.length > 0 && <h2 className="sec">Graded</h2>}
             {graded.map((m: Market) => (
               <div className="card" key={m.id}>
@@ -485,6 +486,64 @@ function Celebrate({ bets, onDone }: { bets: Bet[]; onDone: () => void }) {
         <div className="bulbs" style={{ padding: '8px 6px 0' }}>{Array.from({ length: 14 }, (_, i) => <i key={i} />)}</div>
         <button className="btn" style={{ marginTop: 10 }}>{isWin ? 'Run it back' : 'Reload'}</button>
       </div>
+    </div>
+  );
+}
+
+function PitchForm({ mine, onSent }: { mine: any[]; onSent: (m: string) => void }) {
+  const blank = () => ({ label: '', odds: '', blurb: '' });
+  const [open, setOpen] = useState(false);
+  const [title, setTitle] = useState('');
+  const [rows, setRows] = useState([blank(), blank(), blank()]);
+  const [err, setErr] = useState('');
+  const [busy, setBusy] = useState(false);
+  const set = (i: number, k: 'label' | 'odds' | 'blurb', v: string) => setRows(rows.map((r, j) => (j === i ? { ...r, [k]: v } : r)));
+  const oddsOk = (v: string) => { const n = Number(v.replace('+', '')); return Number.isInteger(n) && Math.abs(n) >= 100; };
+  const filled = rows.filter((r) => r.label.trim());
+  const ready = title.trim().length >= 4 && filled.length >= 2 && filled.every((r) => oddsOk(r.odds));
+  const send = async () => {
+    setErr(''); setBusy(true);
+    try {
+      await api('/api/pitch', { title, options: filled.map((r) => ({ label: r.label, odds: Number(r.odds.replace('+', '')), blurb: r.blurb })) });
+      setTitle(''); setRows([blank(), blank(), blank()]); setOpen(false);
+      onSent('Sent to the commish 🤠');
+    } catch (e: any) { setErr(e.message); } finally { setBusy(false); }
+  };
+  const tag: Record<string, string> = { pending: 'Waiting on the commish', approved: 'On the board ✓', rejected: 'Denied by the commish' };
+  return (
+    <div className="card pitch">
+      <button className="pitch-h" onClick={() => setOpen(!open)}>
+        <span className="t">💡 Want to add a bet?</span>
+        <span className="small muted">{open ? 'Close' : 'Pitch it to the commish ›'}</span>
+      </button>
+      {open && (
+        <div style={{ padding: '0 14px 14px' }}>
+          <label className="lbl">The bet</label>
+          <input value={title} maxLength={90} onChange={(e) => setTitle(e.target.value)} placeholder="First one to lose their phone" />
+          <label className="lbl">Names + lines <span className="muted">(like -150 or +300)</span></label>
+          {rows.map((r, i) => (
+            <div key={i} className="prow">
+              <input placeholder={['Nick', 'Dean', 'Field'][i] ?? 'Name'} value={r.label} maxLength={30} onChange={(e) => set(i, 'label', e.target.value)} />
+              <input className={r.odds && !oddsOk(r.odds) ? 'bad' : ''} placeholder={['-150', '+200', '+400'][i] ?? '+250'} inputMode="numeric" value={r.odds} onChange={(e) => set(i, 'odds', e.target.value.replace(/[^\d+-]/g, ''))} />
+              <input className="why" placeholder="Why? (optional)" value={r.blurb} maxLength={200} onChange={(e) => set(i, 'blurb', e.target.value)} />
+            </div>
+          ))}
+          {rows.length < 10 && <button className="btn sm ghost" onClick={() => setRows([...rows, blank()])}>+ Add a name</button>}
+          {err && <div className="err">{err}</div>}
+          <button className="btn" style={{ marginTop: 12 }} disabled={!ready || busy} onClick={send}>{busy ? 'Sending…' : 'Send to the commish'}</button>
+          <p className="small muted center" style={{ margin: '8px 0 0' }}>The commish can tweak the odds before it goes live.</p>
+        </div>
+      )}
+      {mine?.length > 0 && (
+        <div style={{ padding: '0 14px 12px' }}>
+          {mine.slice(0, 4).map((m) => (
+            <div key={m.id} className="row small" style={{ padding: '6px 0', borderTop: '1px solid var(--line)' }}>
+              <span>{m.title}</span>
+              <span className={m.status === 'approved' ? 'green' : m.status === 'rejected' ? 'red' : 'orange'}>{tag[m.status]}</span>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

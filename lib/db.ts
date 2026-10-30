@@ -83,6 +83,15 @@ create table if not exists fd_legs (
 );
 create index if not exists fd_legs_market on fd_legs (market_id);
 create index if not exists fd_legs_bet on fd_legs (bet_id);
+create table if not exists fd_pitches (
+  id serial primary key,
+  player_id int not null references fd_players(id),
+  title text not null,
+  options jsonb not null,
+  status text not null default 'pending', -- pending | approved | rejected
+  market_id int,
+  created_at timestamptz not null default now()
+);
 create table if not exists fd_feed (
   id serial primary key,
   kind text not null,

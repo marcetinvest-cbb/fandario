@@ -9,7 +9,7 @@ export default function Admin() {
   const [pin, setPin] = useState('');
   const [err, setErr] = useState('');
   const [msg, setMsg] = useState('');
-  const [tab, setTab] = useState<'lines' | 'new' | 'players' | 'bets'>('lines');
+  const [tab, setTab] = useState<'lines' | 'new' | 'pitches' | 'players' | 'bets'>('lines');
 
   const load = useCallback(async () => {
     try { setS(await api('/api/admin')); setAuthed(true); }
@@ -44,16 +44,28 @@ export default function Admin() {
         <a className="bal" href="/" style={{ textDecoration: 'none' }}><div className="v" style={{ color: 'var(--orange2)', fontSize: 14 }}>Open app →</div></a>
       </div></div>
       <div className="wrap">
-        <div className="seg" style={{ gridTemplateColumns: 'repeat(4,1fr)' }}>
-          {(['lines', 'new', 'players', 'bets'] as const).map((t) => (
-            <button key={t} className={tab === t ? 'on' : ''} onClick={() => setTab(t)}>{{ lines: 'Lines', new: '+ New line', players: 'Players', bets: 'All bets' }[t]}</button>
-          ))}
+        <div className="seg" style={{ gridTemplateColumns: 'repeat(5,1fr)', fontSize: 13 }}>
+          {(['lines', 'new', 'pitches', 'players', 'bets'] as const).map((t) => {
+            const pending = (s.pitches ?? []).filter((x: any) => x.status === 'pending').length;
+            return (
+              <button key={t} className={tab === t ? 'on' : ''} onClick={() => setTab(t)} style={{ position: 'relative' }}>
+                {{ lines: 'Lines', new: '+ New', pitches: 'Pitches', players: 'Players', bets: 'Bets' }[t]}
+                {t === 'pitches' && pending > 0 && <span className="badge" style={{ top: -4, right: -2 }}>{pending}</span>}
+              </button>
+            );
+          })}
         </div>
         {err && <div className="err">{err}</div>}
         {msg && <div className="err" style={{ background: '#17301f', color: '#a5f3c4' }}>{msg}</div>}
 
         {tab === 'lines' && s.markets.map((m: any) => <MarketAdmin key={m.id} m={m} act={act} />)}
         {tab === 'new' && <NewMarket act={act} onDone={() => setTab('lines')} />}
+        {tab === 'pitches' && (
+          <>
+            {(s.pitches ?? []).map((pt: any) => <PitchAdmin key={pt.id} pt={pt} act={act} />)}
+            {!(s.pitches ?? []).length && <p className="center muted" style={{ marginTop: 30 }}>No pitches yet. The boys can pitch a bet from the bottom of the Lines tab.</p>}
+          </>
+        )}
         {tab === 'players' && <Players s={s} act={act} />}
         {tab === 'bets' && (
           <div className="card" style={{ padding: 0 }}>
@@ -204,6 +216,41 @@ function NewMarket({ act, onDone }: { act: (b: any, done?: string) => Promise<bo
           setTitle(''); setSubtitle(''); setText(''); setLockAt(''); onDone();
         }
       }}>Post line to the board 🚨</button>
+    </div>
+  );
+}
+
+function PitchAdmin({ pt, act }: { pt: any; act: (b: any, done?: string) => Promise<boolean> }) {
+  const [title, setTitle] = useState(pt.title);
+  const [rows, setRows] = useState<any[]>(pt.options.map((o: any) => ({ label: o.label, odds: fmtOdds(o.odds), blurb: o.blurb || '' })));
+  const pending = pt.status === 'pending';
+  const set = (i: number, k: string, v: string) => setRows(rows.map((r, j) => (j === i ? { ...r, [k]: v } : r)));
+  return (
+    <div className="card" style={{ opacity: pending ? 1 : 0.55 }}>
+      <div className="row">
+        <span className="small"><b className="orange">{pt.name}</b> pitched · {ago(pt.created_at)}</span>
+        <span className={`chip ${pending ? 'lock' : pt.status === 'approved' ? 'won' : 'lost'}`}>{pending ? 'New' : pt.status}</span>
+      </div>
+      {pending ? (
+        <>
+          <label>Bet</label>
+          <input value={title} onChange={(e) => setTitle(e.target.value)} />
+          {rows.map((r, i) => (
+            <div className="orow" key={i}>
+              <input value={r.label} onChange={(e) => set(i, 'label', e.target.value)} />
+              <input value={r.odds} onChange={(e) => set(i, 'odds', e.target.value)} />
+              <textarea value={r.blurb} onChange={(e) => set(i, 'blurb', e.target.value)} placeholder="Blurb (optional)" />
+            </div>
+          ))}
+          <div className="acts">
+            <button className="btn sm ghost" onClick={() => setRows([...rows, { label: '', odds: '+500', blurb: '' }])}>+ Add a name</button>
+            <button className="btn sm ghost" onClick={() => confirm('Reject this pitch?') && act({ action: 'rejectPitch', id: pt.id }, 'Rejected')}>Reject</button>
+            <button className="btn sm" onClick={() => act({ action: 'approvePitch', id: pt.id, title, options: rows.filter((r) => r.label.trim()) }, `"${title}" is live 🚨`)}>Approve &amp; post</button>
+          </div>
+        </>
+      ) : (
+        <div style={{ marginTop: 6 }}><b>{pt.title}</b><div className="small muted">{pt.options.map((o: any) => `${o.label} ${fmtOdds(o.odds)}`).join(' · ')}</div></div>
+      )}
     </div>
   );
 }

@@ -289,3 +289,12 @@ h2.sec { font-family: var(--display); font-weight: 400; font-size: 20px; letter-
 .adm .wrap { padding-bottom: 60px; }
 
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; } }
+
+/* pitch a bet */
+.pitch { border-style: dashed; border-color: rgba(46,230,214,.45); }
+.pitch-h { width: 100%; display: flex; justify-content: space-between; align-items: center; padding: 14px; text-align: left; }
+.pitch-h .t { font-family: var(--display); font-size: 24px; letter-spacing: .8px; color: var(--teal); text-shadow: 0 0 10px rgba(46,230,214,.4); }
+.lbl { display: block; font-size: 12px; font-weight: 800; letter-spacing: .5px; margin: 10px 0 5px; }
+.prow { display: grid; grid-template-columns: 1fr 82px; gap: 6px; margin-bottom: 8px; padding-bottom: 8px; border-bottom: 1px solid rgba(42,50,96,.6); }
+.prow .why { grid-column: 1 / -1; font-size: 13px; padding: 8px 12px; }
+.prow input.bad { outline: 2px solid var(--red); }

@@ -18,7 +18,61 @@ async function feed(c: PoolClient, kind: string, text: string, ids: { player?: n
 
 /* ---------------- read model ---------------- */
 
+/* one-time board fixes Jay asked for (each runs once, tracked in fd_meta) */
+const g = globalThis as unknown as { __fdFix?: Promise<void> };
+async function runFix(key: string, fn: () => Promise<void>) {
+  const r = await q(`insert into fd_meta (key, value) values ($1, now()::text) on conflict do nothing returning key`, [key]);
+  if (!r.length) return;
+  try { await fn(); } catch (e) { await q(`delete from fd_meta where key = $1`, [key]); throw e; }
+}
+export function maintenance() {
+  if (!g.__fdFix) g.__fdFix = (async () => {
+    // 2026-10-30: night one is over — the night-one lines become night-two lines
+    await runFix('fix-night-two', async () => {
+      await q(`update fd_markets set title = '2nd Night Legend' where title = 'First Night Legend' and status in ('open','locked')`);
+      await q(`update fd_markets set title = 'Blacks Out Night Two' where title = 'Blacks Out Night One' and status in ('open','locked')`);
+      await q(`update fd_options set blurb = replace(blurb, 'First Night Legend', '2nd Night Legend') where blurb like '%First Night Legend%'`);
+    });
+    // 2026-10-30: Zach took the first nap → Field wins
+    await runFix('fix-nap-zach', async () => {
+      const m = (await q(`select id from fd_markets where title = 'First One to Take a Nap' and status in ('open','locked')`))[0];
+      if (!m) return;
+      const f = (await q(`select id from fd_options where market_id = $1 and label = 'Field'`, [m.id]))[0];
+      if (!f) return;
+      await q(`update fd_options set label = 'Field (Zach)' where id = $1`, [f.id]);
+      await settleMarket(m.id, f.id);
+    });
+  })().catch((e) => { g.__fdFix = undefined; console.error('maintenance', e); });
+  return g.__fdFix;
+}
+
+export async function submitPitch(playerId: number, title: string, opts: { label: string; odds: number; blurb?: string }[]) {
+  title = (title || '').trim().slice(0, 90);
+  if (title.length < 4) throw new UserError('What\'s the bet? Give it a title.');
+  const clean = (opts || []).map((o) => ({ label: String(o.label || '').trim().slice(0, 30), odds: Number(o.odds), blurb: String(o.blurb || '').trim().slice(0, 200) }))
+    .filter((o) => o.label);
+  if (clean.length < 2) throw new UserError('Add at least 2 names.');
+  for (const o of clean) if (!isValidAmerican(o.odds)) throw new UserError(`Line for ${o.label} should look like -150 or +300.`);
+  return tx(async (c) => {
+    const n = (await c.query(`select count(*)::int as n from fd_pitches where player_id=$1 and status='pending'`, [playerId])).rows[0].n;
+    if (n >= 5) throw new UserError('You have 5 pitches waiting already — let the commish catch up.');
+    const p = (await c.query(`select name from fd_players where id=$1`, [playerId])).rows[0];
+    await c.query(`insert into fd_pitches (player_id, title, options) values ($1,$2,$3)`, [playerId, title, JSON.stringify(clean)]);
+    await feed(c, 'pitch', `${p.name} pitched a new line to the commish 👀`, { player: playerId });
+    return { ok: true };
+  });
+}
+
+export async function approvePitch(id: number, title: string, opts: { label: string; odds: number; blurb?: string }[]) {
+  const pr = (await q(`select p.*, pl.name from fd_pitches p join fd_players pl on pl.id = p.player_id where p.id = $1`, [id]))[0];
+  if (!pr || pr.status !== 'pending') throw new UserError('That pitch was already handled.');
+  const r = await createMarket(title || pr.title, `Pitched by ${pr.name}`, null, opts?.length ? opts : pr.options);
+  await q(`update fd_pitches set status='approved', market_id=$2 where id=$1`, [id, r.id]);
+  return r;
+}
+
 export async function getState(playerId: number | null, opts: { admin?: boolean } = {}) {
+  await maintenance();
   const markets = await q(`
     select m.id, m.title, m.subtitle, m.status, m.lock_at, m.winner_option_id, m.sort,
            ${OPEN_SQL} as is_open
@@ -67,8 +121,12 @@ export async function getState(playerId: number | null, opts: { admin?: boolean 
     ? bets.filter((b) => b.player_id === playerId && b.status !== 'open' && !b.seen_at)
     : [];
 
+  const myPitches = playerId
+    ? await q(`select id, title, status, created_at from fd_pitches where player_id = $1 order by id desc limit 10`, [playerId])
+    : [];
   return {
     now: new Date().toISOString(),
+    myPitches,
     me,
     markets: mk,
     board,
