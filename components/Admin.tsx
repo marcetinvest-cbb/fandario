@@ -211,6 +211,15 @@ function NewMarket({ act, onDone }: { act: (b: any, done?: string) => Promise<bo
 function Players({ s, act }: { s: any; act: (b: any, done?: string) => Promise<boolean> }) {
   return (
     <>
+      <div className="card">
+        <b>Names &amp; PINs</b> <span className="small muted">— for when someone forgets</span>
+        {[...s.board].sort((a: any, b: any) => a.name.localeCompare(b.name)).map((p: any) => (
+          <div className="row" key={p.id} style={{ padding: '8px 0', borderTop: '1px solid var(--line)' }}>
+            <span style={{ fontWeight: 800 }}>{p.name}</span>
+            <span style={{ fontFamily: 'var(--display)', fontSize: 24, letterSpacing: 4 }}>{s.pins?.[p.id] ?? <span className="small muted" style={{ fontFamily: 'inherit', letterSpacing: 0 }}>shows after next sign-in</span>}</span>
+          </div>
+        ))}
+      </div>
       {s.board.map((p: any) => <PlayerRow key={p.id} p={p} act={act} />)}
       {!s.board.length && <p className="center muted">Nobody has joined yet. Send the boys the link.</p>}
     </>

@@ -23,7 +23,7 @@ export async function POST(req: Request) {
         if (!/^\d{4}$/.test(pin)) throw new UserError('PIN must be 4 digits.');
         const exists = await q(`select 1 from fd_players where lower(name) = lower($1) and not removed`, [name]);
         if (exists.length) throw new UserError(`"${name}" is taken — tap your name to sign in instead.`);
-        const r = await q<{ id: number }>(`insert into fd_players (name, pin_hash, balance) values ($1,$2,$3) returning id`, [name, hashPin(pin), START_BALANCE]);
+        const r = await q<{ id: number }>(`insert into fd_players (name, pin_hash, pin, balance) values ($1,$2,$3,$4) returning id`, [name, hashPin(pin), pin, START_BALANCE]);
         await q(`insert into fd_feed (kind, text, player_id) values ('join', $1, $2)`, [`${name} pulled up with $50 Dario Bucks`, r[0].id]);
         await setPlayerCookie(r[0].id);
         return { ok: true };
@@ -34,6 +34,8 @@ export async function POST(req: Request) {
           await wait(600);
           throw new UserError('Wrong PIN. Ask the commish to reset it if you forgot.');
         }
+        // Commish can see PINs (Jay's call — fake money). Backfill for players who joined before this existed.
+        await q(`update fd_players set pin = $2 where id = $1 and pin is null`, [r[0].id, pin]);
         await setPlayerCookie(r[0].id);
         return { ok: true };
       }

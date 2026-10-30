@@ -1,7 +1,13 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
-  <defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ff8a2a"/><stop offset="1" stop-color="#d9480f"/></linearGradient></defs>
-  <rect width="512" height="512" rx="0" fill="#0b0e13"/>
-  <circle cx="256" cy="256" r="196" fill="url(#g)"/>
-  <circle cx="256" cy="256" r="160" fill="none" stroke="#0b0e13" stroke-width="10" stroke-dasharray="26 22"/>
-  <text x="256" y="300" text-anchor="middle" font-family="Arial Black, Arial, sans-serif" font-weight="900" font-size="150" fill="#0b0e13">D$</text>
+  <defs>
+    <radialGradient id="bg" cx=".5" cy=".85" r=".9"><stop offset="0" stop-color="#3a1240"/><stop offset=".55" stop-color="#0e1330"/><stop offset="1" stop-color="#05060d"/></radialGradient>
+    <linearGradient id="c" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#ff9a3c"/><stop offset="1" stop-color="#bf5700"/></linearGradient>
+    <filter id="glow" x="-30%" y="-30%" width="160%" height="160%"><feGaussianBlur stdDeviation="10" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
+  </defs>
+  <rect width="512" height="512" fill="url(#bg)"/>
+  <circle cx="256" cy="256" r="178" fill="none" stroke="#2ee6d6" stroke-width="8" opacity=".85" filter="url(#glow)"/>
+  <circle cx="256" cy="256" r="150" fill="url(#c)" filter="url(#glow)"/>
+  <circle cx="256" cy="256" r="128" fill="none" stroke="#fff3e3" stroke-opacity=".55" stroke-width="5" stroke-dasharray="18 14"/>
+  <path d="M256 140 l27 83 h87 l-70 51 l27 83 l-71 -51 l-71 51 l27 -83 l-70 -51 h87 z" fill="#fff3e3"/>
+  <text x="256" y="300" text-anchor="middle" font-family="Arial Black, Impact, sans-serif" font-weight="900" font-size="86" fill="#bf5700">D$</text>
 </svg>

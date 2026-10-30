@@ -6,7 +6,11 @@ export const dynamic = 'force-dynamic';
 
 export async function GET() {
   if (!(await isAdmin())) return fail('Admin only', 401);
-  return handle(async () => ({ ...(await G.getState(null, { admin: true })), allBets: await G.loadBets([], true) }));
+  return handle(async () => ({
+    ...(await G.getState(null, { admin: true })),
+    allBets: await G.loadBets([], true),
+    pins: Object.fromEntries((await q<{ id: number; pin: string | null }>(`select id, pin from fd_players where not removed`)).map((r) => [r.id, r.pin])),
+  }));
 }
 
 export async function POST(req: Request) {
@@ -25,7 +29,7 @@ export async function POST(req: Request) {
       case 'adjust': return G.adjustBalance(n(b.playerId), Math.round(n(b.amount) * 100), String(b.note ?? '').slice(0, 80));
       case 'resetPin': {
         if (!/^\d{4}$/.test(String(b.pin))) throw new UserError('PIN must be 4 digits.');
-        await q(`update fd_players set pin_hash=$2 where id=$1`, [n(b.playerId), hashPin(String(b.pin))]);
+        await q(`update fd_players set pin_hash=$2, pin=$3 where id=$1`, [n(b.playerId), hashPin(String(b.pin)), String(b.pin)]);
         return { ok: true };
       }
       case 'removePlayer': {

@@ -1,6 +1,8 @@
 'use client';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { fmtMoney, fmtOdds, payoutCents, parlayDecimal, toAmerican } from '@/lib/odds';
+import { Skyline } from './Skyline';
+import { InstallCard, IosInstallFirst } from './Install';
 
 type Opt = { id: number; market_id: number; label: string; blurb: string | null; odds: number; eff_odds: number; boosted: boolean; boost_until: string | null; active: boolean };
 type Market = { id: number; title: string; subtitle: string | null; status: string; is_open: boolean; lock_at: string | null; winner_option_id: number | null; options: Opt[] };
@@ -33,7 +35,7 @@ export function BetCard({ bet, showName, onTail, meId }: { bet: Bet; showName?: 
   return (
     <div className="bet">
       <div className="h">
-        <span style={{ flex: 1 }}>
+        <span className="k">
           {showName && <span className="orange">{bet.player_name} · </span>}
           {n > 1 ? `${n}-Leg Parlay` : 'Straight'} <span className="muted">{fmtOdds(bet.odds)}</span>
         </span>
@@ -73,6 +75,10 @@ export default function App() {
   const [toast, setToast] = useState('');
   const [seenFeed, setSeenFeed] = useState<number>(0);
   const toastT = useRef<any>();
+  const prevOdds = useRef<Map<number, number>>(new Map());
+  const [moves, setMoves] = useState<Record<number, 'up' | 'down'>>({});
+  const [hideInstall, setHideInstall] = useState(true);
+  useEffect(() => { try { setHideInstall(localStorage.getItem('fd.installHide') === '1'); } catch { setHideInstall(false); } }, []);
 
   const flash = useCallback((m: string) => {
     setToast(m);
@@ -106,6 +112,23 @@ export default function App() {
       try { localStorage.setItem('fd.feedSeen', String(s.feed[0].id)); } catch {}
     }
   }, [tab, s]);
+
+  // flash odds buttons when the commish moves a line (green = better payout, red = worse)
+  useEffect(() => {
+    if (!s?.markets) return;
+    const next: Record<number, 'up' | 'down'> = {};
+    const seen = prevOdds.current.size > 0;
+    s.markets.forEach((mk: Market) => mk.options.forEach((o) => {
+      const before = prevOdds.current.get(o.id);
+      if (seen && before !== undefined && before !== o.eff_odds) next[o.id] = o.eff_odds > before ? 'up' : 'down';
+      prevOdds.current.set(o.id, o.eff_odds);
+    }));
+    if (Object.keys(next).length) {
+      setMoves(next);
+      const t = setTimeout(() => setMoves({}), 2300);
+      return () => clearTimeout(t);
+    }
+  }, [s]);
 
   // keep slip odds fresh against the board
   const optIndex = useMemo(() => {
@@ -156,7 +179,7 @@ export default function App() {
         <div className="top-in">
           <div>
             <div className="brand">Fan<b>Dario</b></div>
-            <div className="tag">Keep Austin Betting</div>
+            <div className="tag">★ Keep Austin Betting</div>
           </div>
           <div className="bal">
             <div className="v">{fmtMoney(s.me.balance)}</div>
@@ -169,7 +192,7 @@ export default function App() {
         {s.boosts.map((b: any) => (
           <button className="boost" key={b.id} onClick={() => { setTab('lines'); setTimeout(() => document.getElementById(`m${b.market_id}`)?.scrollIntoView({ behavior: 'smooth' }), 50); }}>
             <span style={{ fontSize: 26 }}>🔥</span>
-            <span>DARIO BOOST · {b.label} {fmtOdds(b.eff_odds)}
+            <span><span className="t">DARIO BOOST · {b.label} {fmtOdds(b.eff_odds)}</span>
               <small>{b.market_title} · was {fmtOdds(b.odds)} · ends {ago(b.boost_until).includes('ago') ? 'soon' : new Date(b.boost_until).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })}</small>
             </span>
           </button>
@@ -177,8 +200,13 @@ export default function App() {
 
         {tab === 'lines' && (
           <>
+            <div className="skyline">
+              <div className="hello">Howdy, <span>{s.me.name}</span></div>
+              <Skyline />
+            </div>
+            {!hideInstall && <InstallCard onDismiss={() => { setHideInstall(true); try { localStorage.setItem('fd.installHide', '1'); } catch {} }} />}
             {openMarkets.map((m: Market) => (
-              <div className="card" key={m.id} id={`m${m.id}`}>
+              <div className="card mcard" key={m.id} id={`m${m.id}`}>
                 <div className="mhead">
                   <div className="t">{m.title}
                     {m.subtitle && <div className="small muted" style={{ fontWeight: 500 }}>{m.subtitle}</div>}
@@ -187,7 +215,7 @@ export default function App() {
                     ? <span className="chip open">{m.lock_at ? `Locks ${lockText(m.lock_at)}` : 'Open'}</span>
                     : <span className="chip lock">Locked</span>}
                 </div>
-                {m.options.map((o) => <OptRow key={o.id} o={o} sel={selected.has(o.id)} disabled={!m.is_open} onTap={() => toggle(m, o)} />)}
+                {m.options.map((o) => <OptRow key={o.id} o={o} sel={selected.has(o.id)} move={moves[o.id]} disabled={!m.is_open} onTap={() => toggle(m, o)} />)}
               </div>
             ))}
             {!openMarkets.length && <p className="center muted" style={{ marginTop: 40 }}>No open lines. The commish is cooking.</p>}
@@ -239,31 +267,31 @@ export default function App() {
 
         {tab === 'board' && (
           <>
-            <h2 className="sec">Leaderboard · cash + live bets</h2>
-            <div className="card">
+            <div className="board-hero">
+              <div className="bh">★ DKR LEADERBOARD ★</div>
               {s.board.map((p: any, i: number) => (
-                <div className={`lb ${p.id === s.me.id ? 'me' : ''}`} key={p.id}>
+                <div className={`lb ${p.id === s.me.id ? 'me' : ''} ${i === 0 ? 'first' : ''}`} key={p.id}>
                   <div className="rk">{i === 0 ? '👑' : i === s.board.length - 1 && s.board.length > 2 ? '🚽' : i + 1}</div>
                   <div>
-                    <div style={{ fontWeight: 800 }}>{p.name}</div>
+                    <div className="nm">{p.name}</div>
                     <div className="small muted">{p.w}-{p.l}{p.at_risk ? ` · ${fmtMoney(p.at_risk)} live` : ''}{p.best ? ` · best hit +${fmtMoney(p.best)}` : ''}</div>
                   </div>
                   <div style={{ textAlign: 'right' }}>
-                    <div className={`big ${p.total >= 5000 ? 'green' : 'red'}`}>{fmtMoney(p.total)}</div>
+                    <div className={`tot ${p.total >= 5000 ? 'green' : 'red'}`}>{fmtMoney(p.total)}</div>
                     <div className="small muted">{fmtMoney(p.balance)} cash</div>
                   </div>
                 </div>
               ))}
             </div>
-            <p className="small muted center">Everyone started with $50 Dario Bucks. Last place is in the toilet.</p>
+            <p className="small muted center">Ranked by cash + live bets. Everyone started with $50 Dario Bucks. Last place is in the toilet.</p>
           </>
         )}
       </div>
 
       {slip.length > 0 && !slipOpen && (
         <button className="slipbar" onClick={() => setSlipOpen(true)}>
-          <span>Bet slip · {slip.length} {slip.length > 1 ? 'picks' : 'pick'}</span>
-          <span>{slip.length > 1 ? 'Parlay ' : ''}{fmtOdds(slipOdds)} ▲</span>
+          <span className="a">🎟️ Bet slip · {slip.length} {slip.length > 1 ? 'picks' : 'pick'}</span>
+          <span className="b">{slip.length > 1 ? 'Parlay ' : ''}{fmtOdds(slipOdds)} ▲</span>
         </button>
       )}
       {slipOpen && (
@@ -275,6 +303,7 @@ export default function App() {
         />
       )}
 
+      <Ticker items={s.feed.filter((f: any) => f.kind !== 'join').slice(0, 10).map((f: any) => f.text)} />
       <nav className="tabs">
         <div className="tabs-in">
           {([['lines', '🎯', 'Lines'], ['bets', '🎟️', 'My Bets'], ['feed', '📣', 'Feed'], ['board', '🏆', 'Board']] as const).map(([k, i, l]) => (
@@ -293,7 +322,7 @@ export default function App() {
   );
 }
 
-function OptRow({ o, sel, disabled, onTap }: { o: Opt; sel: boolean; disabled: boolean; onTap: () => void }) {
+function OptRow({ o, sel, disabled, onTap, move }: { o: Opt; sel: boolean; disabled: boolean; onTap: () => void; move?: 'up' | 'down' }) {
   const [more, setMore] = useState(false);
   return (
     <div className={`opt ${sel ? 'sel' : ''} ${disabled ? 'dis' : ''}`}>
@@ -301,7 +330,7 @@ function OptRow({ o, sel, disabled, onTap }: { o: Opt; sel: boolean; disabled: b
         <div className="n">{o.label} {o.boosted && <span className="fire">🔥 BOOSTED</span>}</div>
         {o.blurb && <div className={`bl ${more ? '' : 'clamp'}`}>{o.blurb}</div>}
       </div>
-      <button className={`odds ${o.eff_odds < 0 ? 'fav' : 'dog'}`} onClick={onTap} disabled={disabled} aria-label={`${o.label} ${fmtOdds(o.eff_odds)}`}>
+      <button className={`odds ${o.eff_odds < 0 ? 'fav' : 'dog'} ${move ?? ''}`} onClick={onTap} disabled={disabled} aria-label={`${o.label} ${fmtOdds(o.eff_odds)}`}>
         {o.boosted && <s>{fmtOdds(o.odds)}</s>}
         {fmtOdds(o.eff_odds)}
       </button>
@@ -318,6 +347,7 @@ function Slip({ slip, setSlip, balance, tailFrom, onClose, onPlaced, refresh }: 
   const [singles, setSingles] = useState<Record<number, string>>({});
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
+  const [stamped, setStamped] = useState(false);
   const isParlay = slip.length > 1 && mode === 'parlay';
   const cents = (v: string) => Math.round((Number(v) || 0) * 100);
 
@@ -349,7 +379,9 @@ function Slip({ slip, setSlip, balance, tailFrom, onClose, onPlaced, refresh }: 
           if (c > 0) await api('/api/bet', { legs: [{ optionId: x.optionId, odds: x.odds }], stake: c / 100 });
         }
       }
-      onPlaced(isParlay ? `Parlay in! To pay ${fmtMoney(payout)} 🤞` : 'Bet placed 🤞');
+      setStamped(true);
+      try { navigator.vibrate?.([30, 40, 60]); } catch {}
+      setTimeout(() => onPlaced(isParlay ? `Parlay in! To pay ${fmtMoney(payout)} 🤞` : 'Bet placed 🤞'), 1000);
     } catch (e: any) {
       const changed = e.data?.oddsChanged as Record<string, number> | undefined;
       if (changed) setSlip((cur) => cur.map((x) => (changed[x.optionId] !== undefined ? { ...x, odds: changed[x.optionId] } : x)));
@@ -364,49 +396,60 @@ function Slip({ slip, setSlip, balance, tailFrom, onClose, onPlaced, refresh }: 
     <>
       <div className="sheetbg" onClick={onClose} />
       <div className="sheet">
-        <div className="grab" />
-        <div className="row"><b className="big">Bet slip</b><button className="muted" onClick={() => setSlip(() => [])}>Clear</button></div>
-        {tailFrom && <div className="small orange" style={{ marginTop: 4 }}>🐑 Tailing — odds are today's, not theirs</div>}
-        {slip.length > 1 && (
-          <div className="seg">
-            <button className={mode === 'parlay' ? 'on' : ''} onClick={() => setMode('parlay')}>Parlay {fmtOdds(toAmerican(parlayDecimal(slip.map((x) => x.odds))))}</button>
-            <button className={mode === 'singles' ? 'on' : ''} onClick={() => setMode('singles')}>Straight bets</button>
-          </div>
-        )}
-        {slip.map((x) => (
-          <div className="leg" key={x.optionId}>
-            <div style={{ flex: 1 }}>
-              <b>{x.label}</b> <span className="orange">{fmtOdds(x.odds)}{x.boosted ? ' 🔥' : ''}</span>
-              <div className="small muted">{x.marketTitle}</div>
-              {!isParlay && slip.length > 1 && (
-                <div className="money" style={{ marginTop: 6 }}>
-                  <span>$</span>
-                  <input inputMode="decimal" placeholder="0" value={singles[x.optionId] || ''} onChange={(e) => setSingles({ ...singles, [x.optionId]: e.target.value.replace(/[^\d.]/g, '') })} />
-                  <span className="small muted" style={{ whiteSpace: 'nowrap' }}>→ {fmtMoney(payoutCents(cents(singles[x.optionId] || ''), [x.odds]))}</span>
-                </div>
-              )}
+        <div className="ticket">
+          {stamped && <div className="stamp"><span>BET PLACED</span></div>}
+          <div className="stubtop">
+            <div>
+              <div className="admit">ADMIT ONE · FANDARIO</div>
+              <div className="ttl">{isParlay ? `${slip.length}-Leg Parlay` : slip.length > 1 ? 'Straight Bets' : 'Straight Bet'}</div>
             </div>
-            <button className="x" onClick={() => setSlip((c) => c.filter((y) => y.optionId !== x.optionId))}>×</button>
+            <button className="clear" onClick={() => setSlip(() => [])}>Clear</button>
           </div>
-        ))}
-        {slip.length < MAX_LEGS && <p className="small muted">Add up to {MAX_LEGS - slip.length} more {MAX_LEGS - slip.length === 1 ? 'leg' : 'legs'} from other lines for a parlay.</p>}
-        {(isParlay || slip.length === 1) && (
-          <>
-            <div className="money" style={{ marginTop: 10 }}>
-              <span className="big">$</span>
-              <input inputMode="decimal" placeholder="Wager" value={stake} onChange={(e) => setStake(e.target.value.replace(/[^\d.]/g, ''))} />
+          {tailFrom && <div className="small" style={{ marginTop: 4, color: '#bf5700', fontWeight: 700 }}>🐑 Tailing — you get today&apos;s odds, not theirs</div>}
+          {slip.length > 1 && (
+            <div className="seg">
+              <button className={mode === 'parlay' ? 'on' : ''} onClick={() => setMode('parlay')}>Parlay {fmtOdds(toAmerican(parlayDecimal(slip.map((x) => x.odds))))}</button>
+              <button className={mode === 'singles' ? 'on' : ''} onClick={() => setMode('singles')}>Straight bets</button>
             </div>
-            {quick(setStake)}
-          </>
-        )}
-        <div className="row" style={{ margin: '12px 0' }}>
-          <span className="muted">Balance {fmtMoney(balance)}</span>
-          <span>Payout <b className="green big">{fmtMoney(payout)}</b></span>
+          )}
+          <div className="perf" />
+          {slip.map((x) => (
+            <div className="leg" key={x.optionId}>
+              <div style={{ flex: 1 }}>
+                <b style={{ fontSize: 16 }}>{x.label}</b> <span className="lo">{fmtOdds(x.odds)}{x.boosted ? ' 🔥' : ''}</span>
+                <div className="small muted">{x.marketTitle}</div>
+                {!isParlay && slip.length > 1 && (
+                  <div className="money" style={{ marginTop: 6 }}>
+                    <span>$</span>
+                    <input inputMode="decimal" placeholder="0" value={singles[x.optionId] || ''} onChange={(e) => setSingles({ ...singles, [x.optionId]: e.target.value.replace(/[^\d.]/g, '') })} />
+                    <span className="small muted" style={{ whiteSpace: 'nowrap' }}>→ {fmtMoney(payoutCents(cents(singles[x.optionId] || ''), [x.odds]))}</span>
+                  </div>
+                )}
+              </div>
+              <button className="x" onClick={() => setSlip((c) => c.filter((y) => y.optionId !== x.optionId))}>×</button>
+            </div>
+          ))}
+          {slip.length < MAX_LEGS && <p className="small muted">Add up to {MAX_LEGS - slip.length} more {MAX_LEGS - slip.length === 1 ? 'leg' : 'legs'} from other lines for a parlay.</p>}
+          {(isParlay || slip.length === 1) && (
+            <>
+              <div className="money" style={{ marginTop: 10 }}>
+                <span className="big">$</span>
+                <input inputMode="decimal" placeholder="Wager" value={stake} onChange={(e) => setStake(e.target.value.replace(/[^\d.]/g, ''))} />
+              </div>
+              {quick(setStake)}
+            </>
+          )}
+          <div className="row" style={{ margin: '14px 0 12px', alignItems: 'flex-end' }}>
+            <span className="small muted">Balance<br /><b style={{ color: '#1b1a22', fontSize: 15 }}>{fmtMoney(balance)}</b></span>
+            <span style={{ textAlign: 'right' }}><span className="small muted">Payout</span><div className="pay">{fmtMoney(payout)}</div></span>
+          </div>
+          {err && <div className="err">{err}</div>}
+          <button className="btn" disabled={busy || stamped || total < 100} onClick={place}>
+            {busy ? 'Placing…' : `Place ${isParlay ? 'parlay' : slip.length > 1 ? 'bets' : 'bet'} · ${fmtMoney(total)}`}
+          </button>
+          <div className="barcode" />
+          <div className="fine">AUSTIN, TX · DARIO BUCKS ONLY · NO REFUNDS ON BAD DECISIONS</div>
         </div>
-        {err && <div className="err">{err}</div>}
-        <button className="btn" disabled={busy || total < 100} onClick={place}>
-          {busy ? 'Placing…' : `Place ${isParlay ? 'parlay' : slip.length > 1 ? 'bets' : 'bet'} · ${fmtMoney(total)}`}
-        </button>
       </div>
     </>
   );
@@ -418,21 +461,42 @@ function Celebrate({ bets, onDone }: { bets: Bet[]; onDone: () => void }) {
   const net = won.reduce((a, b) => a + b.payout, 0);
   const bad = lost.some((b) => b.legs.length > 1 && b.legs.filter((l) => l.result === 'won').length === b.legs.length - 1);
   const isWin = won.length > 0;
-  const pieces = useMemo(() => Array.from({ length: 60 }, (_, i) => ({
-    left: Math.random() * 100, delay: Math.random() * 0.8, dur: 2 + Math.random() * 2,
-    color: ['#ff7a1a', '#2fd27a', '#ffd166', '#5aa9ff', '#fff'][i % 5],
+  const isLoss = !isWin && lost.length > 0;
+  const pieces = useMemo(() => Array.from({ length: 70 }, (_, i) => ({
+    left: Math.random() * 100, delay: Math.random() * 0.9, dur: 2 + Math.random() * 2,
+    color: ['#bf5700', '#ff8a2a', '#3ee07f', '#ffd166', '#2ee6d6', '#ff4fa8', '#fff'][i % 7],
   })), []);
+  const bats = useMemo(() => Array.from({ length: 16 }, (_, i) => ({ top: 10 + Math.random() * 70, delay: Math.random() * 1.4, dur: 2.2 + Math.random() * 1.6, size: 22 + Math.random() * 22, k: i })), []);
+  useEffect(() => { try { navigator.vibrate?.(isWin ? [40, 60, 40, 60, 120] : [200]); } catch {} }, [isWin]);
   return (
     <div className="celebrate" onClick={onDone}>
       {isWin && <div className="confetti">{pieces.map((p, i) => <i key={i} style={{ left: `${p.left}%`, background: p.color, animationDuration: `${p.dur}s`, animationDelay: `${p.delay}s` }} />)}</div>}
-      <div className="box">
-        <div className="emoji">{isWin ? '💰' : bad ? '😭' : '💀'}</div>
-        <div className={`headline ${isWin ? 'green' : 'red'}`}>{isWin ? 'CASHED!' : bad ? 'BAD BEAT' : 'Tough one'}</div>
-        {isWin && <p className="big">+{fmtMoney(net)} Dario Bucks</p>}
-        {won.map((b) => <p key={b.id} className="small">{b.legs.map((l) => l.label).join(' + ')} hit for <b className="green">{fmtMoney(b.payout)}</b></p>)}
-        {lost.map((b) => <p key={b.id} className="small muted">{b.legs.map((l) => l.label).join(' + ')} — lost {fmtMoney(b.stake)}{bad ? ' by one leg' : ''}</p>)}
-        {bets.filter((b) => b.status === 'void').map((b) => <p key={b.id} className="small muted">Refunded {fmtMoney(b.payout)} (line voided)</p>)}
-        <button className="btn" style={{ marginTop: 14 }}>{isWin ? 'Run it back' : 'Reload'}</button>
+      {isLoss && <div className="bats">{bats.map((b) => <span key={b.k} style={{ top: `${b.top}%`, fontSize: b.size, animationDelay: `${b.delay}s`, animationDuration: `${b.dur}s` }}>🦇</span>)}</div>}
+      <div className="jumbo">
+        <div className="bulbs">{Array.from({ length: 14 }, (_, i) => <i key={i} />)}</div>
+        <div className="screen">
+          <div className={`led ${isWin ? 'win' : 'loss'}`}>{isWin ? 'CASHED!' : bad ? 'BAD BEAT' : isLoss ? 'DEAD' : 'PUSH'}</div>
+          {isWin && <div className="amt">+{fmtMoney(net)}</div>}
+          {isLoss && <div className="sub" style={{ fontSize: 15, fontWeight: 800 }}>{bad ? 'One leg away. The bats feel for you.' : 'The bats came out for that one.'}</div>}
+          {won.map((b) => <p key={b.id} className="sub">✓ {b.legs.map((l) => l.label).join(' + ')} · paid <b className="green">{fmtMoney(b.payout)}</b></p>)}
+          {lost.map((b) => <p key={b.id} className="sub">✗ {b.legs.map((l) => l.label).join(' + ')} · lost {fmtMoney(b.stake)}</p>)}
+          {bets.filter((b) => b.status === 'void').map((b) => <p key={b.id} className="sub">Refunded {fmtMoney(b.payout)} (line voided)</p>)}
+        </div>
+        <div className="bulbs" style={{ padding: '8px 6px 0' }}>{Array.from({ length: 14 }, (_, i) => <i key={i} />)}</div>
+        <button className="btn" style={{ marginTop: 10 }}>{isWin ? 'Run it back' : 'Reload'}</button>
+      </div>
+    </div>
+  );
+}
+
+function Ticker({ items }: { items: string[] }) {
+  if (!items.length) return null;
+  const dur = Math.max(25, items.join(' ').length * 0.12);
+  return (
+    <div className="ticker" aria-hidden="true">
+      <div className="lbl">LIVE</div>
+      <div className="run" style={{ animationDuration: `${dur}s` }}>
+        {[...items, ...items].map((t, i) => <span key={i}>{t}</span>)}
       </div>
     </div>
   );
@@ -466,9 +530,10 @@ function Login({ onDone }: { onDone: () => void }) {
     <div className="wrap">
       <div className="hero">
         <div className="brand">Fan<b>Dario</b></div>
-        <div className="tag" style={{ marginTop: 4 }}>Keep Austin Betting · Dario's weekend</div>
+        <div className="tag">★ Keep Austin Betting ★</div>
         <p className="muted" style={{ marginTop: 18 }}>Everybody starts with <b className="green">$50 Dario Bucks</b>. Straights or up to 3-leg parlays. Last place is in the toilet.</p>
       </div>
+      <IosInstallFirst>
       {!pick && !isNew && (
         <>
           <h2 className="sec center">Who are you?</h2>
@@ -499,6 +564,8 @@ function Login({ onDone }: { onDone: () => void }) {
         </div>
       )}
       {err && !pick && !isNew && <div className="err">{err}</div>}
+      </IosInstallFirst>
+      <div className="skyline" style={{ marginTop: 30 }}><Skyline /></div>
     </div>
   );
 }
