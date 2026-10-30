@@ -43,6 +43,13 @@ export function maintenance() {
       await set('Blacks Out Night Two', 'Jwills', 'Has way too many old fashioneds.');
       await set('2nd Night Legend', 'Jwills', "Always wanted to go to Texas, doesn't know what to do and turns into the 2nd Night Legend.");
     });
+    // 2026-10-30: Mike blew up the bathroom first
+    await runFix('fix-bathroom-mike', async () => {
+      const m = (await q(`select id from fd_markets where title = 'First One to Blow Up the Bathroom' and status in ('open','locked')`))[0];
+      if (!m) return;
+      const o = (await q(`select id from fd_options where market_id = $1 and label = 'Mike'`, [m.id]))[0];
+      if (o) await settleMarket(m.id, o.id);
+    });
     // 2026-10-30: Zach took the first nap → Field wins
     await runFix('fix-nap-zach', async () => {
       const m = (await q(`select id from fd_markets where title = 'First One to Take a Nap' and status in ('open','locked')`))[0];
