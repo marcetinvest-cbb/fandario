@@ -338,3 +338,12 @@ h2.sec { font-family: var(--display); font-weight: 400; font-size: 20px; letter-
 .hotbar .ago { margin-left: auto; font-family: -apple-system, sans-serif; font-size: 11px; letter-spacing: .5px; font-weight: 800; opacity: .9; }
 .hotbar { white-space: nowrap; font-size: 16px; letter-spacing: 1.5px; }
 .hotbar .ago { white-space: nowrap; }
+
+.prow { grid-template-columns: 1fr 112px; }
+.oddsin { display: flex; border: 1px solid var(--line); border-radius: 12px; overflow: hidden; background: rgba(10,14,36,.7); }
+.oddsin.bad { outline: 2px solid var(--red); }
+.oddsin .sg { width: 40px; flex: none; font-size: 22px; font-weight: 900; }
+.oddsin .sg.neg { background: rgba(232,113,26,.25); color: var(--orange2); }
+.oddsin .sg.pos { background: rgba(46,230,214,.15); color: var(--teal); }
+.oddsin input { border: 0; border-radius: 0; background: transparent; padding-left: 8px; min-width: 0; }
+.pitch { margin-top: 12px; }

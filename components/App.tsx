@@ -309,6 +309,7 @@ export default function App() {
               <Skyline />
             </div>
             {!hideInstall && <InstallCard onDismiss={() => { setHideInstall(true); try { localStorage.setItem('fd.installHide', '1'); } catch {} }} />}
+            <PitchForm mine={s.myPitches} onSent={(m) => { flash(m); load(); }} />
             {spot.length > 0 && <div className="newdrop">🚨 New line just dropped</div>}
             {[...openMarkets.filter((m: Market) => spot.includes(m.id)), ...openMarkets.filter((m: Market) => !spot.includes(m.id))].map((m: Market) => (
               <div className={`card mcard ${spot.includes(m.id) ? 'spot' : ''} ${m.is_open && (m.age_s ?? 1e9) < HOT_SECS ? 'hot' : ''}`} key={m.id} id={`m${m.id}`}
@@ -330,7 +331,6 @@ export default function App() {
               </div>
             ))}
             {!openMarkets.length && <p className="center muted" style={{ marginTop: 40 }}>No open lines. The commish is cooking.</p>}
-            <PitchForm mine={s.myPitches} onSent={(m) => { flash(m); load(); }} />
             {graded.length > 0 && <h2 className="sec">Graded</h2>}
             {graded.map((m: Market) => (
               <div className="card" key={m.id}>
@@ -603,21 +603,32 @@ function Celebrate({ bets, onDone }: { bets: Bet[]; onDone: () => void }) {
 }
 
 function PitchForm({ mine, onSent }: { mine: any[]; onSent: (m: string) => void }) {
-  const blank = () => ({ label: '', odds: '', blurb: '' });
+  // Odds = a +/− toggle plus the number. Phone number pads often have no minus or plus key —
+  // that's why "-115" couldn't be typed before. Typing or pasting "-115" / "+100" still works too.
+  const blank = (sign: '+' | '-' = '+') => ({ label: '', sign, num: '', blurb: '' });
   const [open, setOpen] = useState(false);
   const [title, setTitle] = useState('');
-  const [rows, setRows] = useState([blank(), blank(), blank()]);
+  const [rows, setRows] = useState([blank('-'), blank(), blank()]);
   const [err, setErr] = useState('');
   const [busy, setBusy] = useState(false);
-  const set = (i: number, k: 'label' | 'odds' | 'blurb', v: string) => setRows(rows.map((r, j) => (j === i ? { ...r, [k]: v } : r)));
-  const oddsOk = (v: string) => { const n = Number(v.replace('+', '')); return Number.isInteger(n) && Math.abs(n) >= 100; };
+  const set = (i: number, k: 'label' | 'sign' | 'num' | 'blurb', v: string) => setRows(rows.map((r, j) => (j === i ? { ...r, [k]: v } : r)));
+  const setNum = (i: number, raw: string) => {
+    const v = raw.replace(/[\u2212\u2013\u2014]/g, '-'); // fancy minus signs from some keyboards
+    const r = rows[i];
+    const sign = v.includes('-') ? '-' : v.includes('+') ? '+' : r.sign;
+    setRows(rows.map((x, j) => (j === i ? { ...x, sign, num: v.replace(/\D/g, '').slice(0, 5) } : x)));
+  };
+  const val = (r: { sign: string; num: string }) => (r.sign === '-' ? -1 : 1) * Number(r.num || 0);
+  const numOk = (r: { num: string }) => Number(r.num) >= 100;
   const filled = rows.filter((r) => r.label.trim());
-  const ready = title.trim().length >= 4 && filled.length >= 2 && filled.every((r) => oddsOk(r.odds));
+  const why = title.trim().length < 4 ? 'Give the bet a title' : filled.length < 2 ? 'Add at least 2 names'
+    : filled.find((r) => !numOk(r)) ? `Line for ${filled.find((r) => !numOk(r))!.label} needs to be 100 or more (like -115 or +250)` : '';
+  const ready = !why;
   const send = async () => {
     setErr(''); setBusy(true);
     try {
-      await api('/api/pitch', { title, options: filled.map((r) => ({ label: r.label, odds: Number(r.odds.replace('+', '')), blurb: r.blurb })) });
-      setTitle(''); setRows([blank(), blank(), blank()]); setOpen(false);
+      await api('/api/pitch', { title, options: filled.map((r) => ({ label: r.label, odds: val(r), blurb: r.blurb })) });
+      setTitle(''); setRows([blank('-'), blank(), blank()]); setOpen(false);
       onSent('Sent to the commish 🤠');
     } catch (e: any) { setErr(e.message); } finally { setBusy(false); }
   };
@@ -632,16 +643,20 @@ function PitchForm({ mine, onSent }: { mine: any[]; onSent: (m: string) => void 
         <div style={{ padding: '0 14px 14px' }}>
           <label className="lbl">The bet</label>
           <input value={title} maxLength={90} onChange={(e) => setTitle(e.target.value)} placeholder="First one to lose their phone" />
-          <label className="lbl">Names + lines <span className="muted">(like -150 or +300)</span></label>
+          <label className="lbl">Names + lines <span className="muted">(tap ± to flip favorite/underdog)</span></label>
           {rows.map((r, i) => (
             <div key={i} className="prow">
               <input placeholder={['Nick', 'Dean', 'Field'][i] ?? 'Name'} value={r.label} maxLength={30} onChange={(e) => set(i, 'label', e.target.value)} />
-              <input className={r.odds && !oddsOk(r.odds) ? 'bad' : ''} placeholder={['-150', '+200', '+400'][i] ?? '+250'} inputMode="numeric" value={r.odds} onChange={(e) => set(i, 'odds', e.target.value.replace(/[^\d+-]/g, ''))} />
+              <div className={`oddsin ${r.num && !numOk(r) ? 'bad' : ''}`}>
+                <button type="button" className={`sg ${r.sign === '-' ? 'neg' : 'pos'}`} onClick={() => set(i, 'sign', r.sign === '-' ? '+' : '-')} aria-label="Flip plus or minus">{r.sign === '-' ? '−' : '+'}</button>
+                <input placeholder={['150', '200', '400'][i] ?? '250'} inputMode="numeric" pattern="[0-9]*" value={r.num} onChange={(e) => setNum(i, e.target.value)} />
+              </div>
               <input className="why" placeholder="Why? (optional)" value={r.blurb} maxLength={200} onChange={(e) => set(i, 'blurb', e.target.value)} />
             </div>
           ))}
           {rows.length < 10 && <button className="btn sm ghost" onClick={() => setRows([...rows, blank()])}>+ Add a name</button>}
           {err && <div className="err">{err}</div>}
+          {!err && why && (title || filled.length > 0) && <p className="small orange" style={{ margin: '10px 0 0' }}>{why}</p>}
           <button className="btn" style={{ marginTop: 12 }} disabled={!ready || busy} onClick={send}>{busy ? 'Sending…' : 'Send to the commish'}</button>
           <p className="small muted center" style={{ margin: '8px 0 0' }}>The commish can tweak the odds before it goes live.</p>
         </div>
