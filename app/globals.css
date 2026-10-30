@@ -321,3 +321,8 @@ h2.sec { font-family: var(--display); font-weight: 400; font-size: 20px; letter-
 .bet .lg.won b { color: var(--green); }
 .bet .lg.lost b { text-decoration: line-through; opacity: .7; }
 .bet.sweating { background: linear-gradient(90deg, rgba(255,209,102,.07), transparent); }
+
+/* already bet this pick */
+.opt.has { background: linear-gradient(90deg, rgba(46,230,214,.09), transparent 70%); }
+.opt .mine { display: inline-block; margin-top: 4px; font-size: 11px; font-weight: 900; letter-spacing: .3px; color: var(--teal); background: rgba(46,230,214,.1); border: 1px solid rgba(46,230,214,.35); border-radius: 7px; padding: 2px 7px; }
+.chip.inchip { background: rgba(46,230,214,.12); color: var(--teal); border: 1px solid rgba(46,230,214,.4); }

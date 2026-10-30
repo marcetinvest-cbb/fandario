@@ -229,9 +229,23 @@ export default function App() {
   if (!s) return <div className="wrap"><div className="hero"><div className="brand">Fan<b>Dario</b></div><p className="muted">{loadErr || 'Loading the board…'}</p></div></div>;
   if (!s.me) return <Login onDone={load} />;
 
+  // what I've already got riding on each pick (live bets only)
+  const onIt = new Map<number, { n: number; stake: number }>();
+  const inMarket = new Set<number>();
+  s.myBets.forEach((b: Bet) => {
+    if (b.status !== 'open') return;
+    b.legs.forEach((l) => {
+      const cur = onIt.get(l.option_id) ?? { n: 0, stake: 0 };
+      onIt.set(l.option_id, { n: cur.n + 1, stake: cur.stake + b.stake });
+      inMarket.add(l.market_id);
+    });
+  });
+
   const toggle = (mk: Market, o: Opt) => {
     if (!mk.is_open) return;
     setTailFrom(null);
+    const mine = onIt.get(o.id);
+    if (mine && !slip.some((x) => x.optionId === o.id)) flash(`Heads up — you're already on ${o.label} (${mine.n} ${mine.n === 1 ? 'bet' : 'bets'}, ${fmtMoney(mine.stake)}). Going again 👀`, 3500);
     setSlip((cur) => {
       if (cur.some((x) => x.optionId === o.id)) return cur.filter((x) => x.optionId !== o.id);
       const same = cur.findIndex((x) => x.marketId === mk.id);
@@ -303,11 +317,12 @@ export default function App() {
                     {m.subtitle && <div className="small muted" style={{ fontWeight: 500 }}>{m.subtitle}</div>}
                   </div>
                   {freshTag.has(m.id) && <span className="chip newchip">New</span>}
+                  {inMarket.has(m.id) && <span className="chip inchip" title="You have a bet on this line">🎟️ In</span>}
                   {m.is_open
                     ? <span className="chip open">{m.lock_at ? `Locks ${lockText(m.lock_at)}` : 'Open'}</span>
                     : <span className="chip lock">Locked</span>}
                 </div>
-                {m.options.map((o) => <OptRow key={o.id} o={o} sel={selected.has(o.id)} move={moves[o.id]} disabled={!m.is_open} onTap={() => toggle(m, o)} />)}
+                {m.options.map((o) => <OptRow key={o.id} o={o} sel={selected.has(o.id)} mine={onIt.get(o.id)} move={moves[o.id]} disabled={!m.is_open} onTap={() => toggle(m, o)} />)}
               </div>
             ))}
             {!openMarkets.length && <p className="center muted" style={{ marginTop: 40 }}>No open lines. The commish is cooking.</p>}
@@ -415,12 +430,13 @@ export default function App() {
   );
 }
 
-function OptRow({ o, sel, disabled, onTap, move }: { o: Opt; sel: boolean; disabled: boolean; onTap: () => void; move?: 'up' | 'down' }) {
+function OptRow({ o, sel, disabled, onTap, move, mine }: { o: Opt; sel: boolean; disabled: boolean; onTap: () => void; move?: 'up' | 'down'; mine?: { n: number; stake: number } }) {
   const [more, setMore] = useState(false);
   return (
-    <div className={`opt ${sel ? 'sel' : ''} ${disabled ? 'dis' : ''}`}>
+    <div className={`opt ${sel ? 'sel' : ''} ${disabled ? 'dis' : ''} ${mine ? 'has' : ''}`}>
       <div className="who" onClick={() => setMore((m) => !m)}>
         <div className="n">{o.label} {o.boosted && <span className="fire">🔥 BOOSTED</span>}</div>
+        {mine && <div className="mine">🎟️ You&apos;re on this{mine.n > 1 ? ` ×${mine.n}` : ''} · {fmtMoney(mine.stake)} riding</div>}
         {o.blurb && <div className={`bl ${more ? '' : 'clamp'}`}>{o.blurb}</div>}
       </div>
       <button className={`odds ${o.eff_odds < 0 ? 'fav' : 'dog'} ${move ?? ''}`} onClick={onTap} disabled={disabled} aria-label={`${o.label} ${fmtOdds(o.eff_odds)}`}>

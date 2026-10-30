@@ -94,7 +94,7 @@ export async function getState(playerId: number | null, opts: { admin?: boolean 
     select m.id, m.title, m.subtitle, m.status, m.lock_at, m.winner_option_id, m.sort,
            ${OPEN_SQL} as is_open
     from fd_markets m order by
-      case when m.status in ('settled','void') then 1 else 0 end, m.sort, m.id`);
+      case when m.status in ('settled','void') then 1 else 0 end, m.created_at desc, m.sort, m.id`);
   const options = await q(`
     select o.id, o.market_id, o.label, o.blurb, o.odds, o.active, o.sort,
            ${EFF_ODDS} as eff_odds, ${BOOSTED} as boosted, o.boost_until, o.boost_odds,
@@ -184,7 +184,7 @@ export async function loadBets(ids: number[], all = false) {
 
 export type LegInput = { optionId: number; odds: number };
 
-export async function placeBet(playerId: number, legsIn: LegInput[], stake: number, tailedFrom?: number | null) {
+export async function placeBet(playerId: number, legsIn: LegInput[], stake: number, tailedFrom?: number | null, byAdmin = false) {
   if (!Array.isArray(legsIn) || legsIn.length < 1) throw new UserError('Pick at least one line.');
   if (legsIn.length > MAX_LEGS) throw new UserError(`Max ${MAX_LEGS} legs per parlay.`);
   if (!Number.isInteger(stake) || stake < MIN_STAKE) throw new UserError('Minimum bet is $1.');
@@ -229,7 +229,7 @@ export async function placeBet(playerId: number, legsIn: LegInput[], stake: numb
       ]);
     const kind = rows.length > 1 ? `${rows.length}-leg parlay` : 'straight';
     const am = fmtOdds(toAmerican(parlayDecimal(odds)));
-    await feed(c, 'bet', `${p.name} put ${fmtMoney(stake)} on a ${kind} (${am}) to win ${fmtMoney(potential)}`, {
+    await feed(c, 'bet', `${p.name} put ${fmtMoney(stake)} on a ${kind} (${am}) to win ${fmtMoney(potential)}${byAdmin ? ' (placed by the commish)' : ''}`, {
       player: playerId, bet: betId,
     });
     return { betId };

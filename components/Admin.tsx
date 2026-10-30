@@ -303,13 +303,57 @@ function Players({ s, act }: { s: any; act: (b: any, done?: string) => Promise<b
           </div>
         ))}
       </div>
-      {s.board.map((p: any) => <PlayerRow key={p.id} p={p} act={act} />)}
+      {s.board.map((p: any) => <PlayerRow key={p.id} p={p} act={act} markets={s.markets} />)}
       {!s.board.length && <p className="center muted">Nobody has joined yet. Send the boys the link.</p>}
     </>
   );
 }
 
-function PlayerRow({ p, act }: { p: any; act: (b: any, done?: string) => Promise<boolean> }) {
+function BetFor({ p, act, markets }: { p: any; act: (b: any, done?: string) => Promise<boolean>; markets: any[] }) {
+  const [open, setOpen] = useState(false);
+  const [legs, setLegs] = useState<{ m: string; o: string }[]>([{ m: '', o: '' }]);
+  const [stake, setStake] = useState('');
+  const live = markets.filter((m: any) => m.is_open);
+  const pick = (i: number) => { const m = live.find((x: any) => String(x.id) === legs[i].m); return m?.options.find((o: any) => String(o.id) === legs[i].o && o.active); };
+  const chosen = legs.map((_, i) => pick(i)).filter(Boolean);
+  const dec = chosen.reduce((a: number, o: any) => a * (o.eff_odds > 0 ? 1 + o.eff_odds / 100 : 1 + 100 / -o.eff_odds), 1);
+  const pay = Math.floor((Number(stake) || 0) * 100 * dec + 1e-6);
+  if (!open) return <button className="btn sm ghost" style={{ marginTop: 10 }} onClick={() => setOpen(true)}>🎟️ Place a bet for {p.name}</button>;
+  return (
+    <div style={{ marginTop: 10, padding: 10, borderRadius: 12, border: '1px dashed var(--orange)' }}>
+      <b className="small orange">Bet for {p.name} — comes out of his {fmtMoney(p.balance)}</b>
+      {legs.map((l, i) => {
+        const m = live.find((x: any) => String(x.id) === l.m);
+        return (
+          <div key={i} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 6, marginTop: 6 }}>
+            <select value={l.m} onChange={(e) => setLegs(legs.map((x, j) => (j === i ? { m: e.target.value, o: '' } : x)))}>
+              <option value="">Line…</option>
+              {live.filter((x: any) => String(x.id) === l.m || !legs.some((y) => y.m === String(x.id))).map((x: any) => <option key={x.id} value={x.id}>{x.title}</option>)}
+            </select>
+            <select value={l.o} disabled={!m} onChange={(e) => setLegs(legs.map((x, j) => (j === i ? { ...x, o: e.target.value } : x)))}>
+              <option value="">Pick…</option>
+              {m?.options.filter((o: any) => o.active).map((o: any) => <option key={o.id} value={o.id}>{o.label} {fmtOdds(o.eff_odds)}</option>)}
+            </select>
+          </div>
+        );
+      })}
+      <div className="acts">
+        {legs.length < 3 && <button className="btn sm ghost" onClick={() => setLegs([...legs, { m: '', o: '' }])}>+ Parlay leg</button>}
+        <input placeholder="$ wager" inputMode="decimal" value={stake} onChange={(e) => setStake(e.target.value.replace(/[^\d.]/g, ''))} style={{ width: 100, padding: '6px 10px' }} />
+        <span className="small" style={{ alignSelf: 'center' }}>pays <b className="green">{fmtMoney(pay)}</b></span>
+      </div>
+      <div className="acts">
+        <button className="btn sm" disabled={!chosen.length || chosen.length !== legs.filter((l) => l.m).length || !(Number(stake) >= 1)} onClick={async () => {
+          const ok = await act({ action: 'betFor', playerId: p.id, stake: Number(stake), legs: chosen.map((o: any) => ({ optionId: o.id, odds: o.eff_odds })) }, `Bet placed for ${p.name}`);
+          if (ok) { setLegs([{ m: '', o: '' }]); setStake(''); setOpen(false); }
+        }}>Place it</button>
+        <button className="btn sm ghost" onClick={() => setOpen(false)}>Cancel</button>
+      </div>
+    </div>
+  );
+}
+
+function PlayerRow({ p, act, markets }: { p: any; act: (b: any, done?: string) => Promise<boolean>; markets: any[] }) {
   const [amt, setAmt] = useState('');
   const [note, setNote] = useState('');
   const [pin, setPin] = useState('');
@@ -328,6 +372,7 @@ function PlayerRow({ p, act }: { p: any; act: (b: any, done?: string) => Promise
         <input placeholder="Reason (shows in feed)" value={note} onChange={(e) => setNote(e.target.value)} />
         <button className="btn sm" disabled={!amt} onClick={async () => { if (await act({ action: 'adjust', playerId: p.id, amount: Number(amt), note }, 'Done')) { setAmt(''); setNote(''); } }}>Go</button>
       </div>
+      <BetFor p={p} act={act} markets={markets} />
       <label>Reset PIN</label>
       <div className="row">
         <input placeholder="New 4-digit PIN" inputMode="numeric" value={pin} onChange={(e) => setPin(e.target.value.replace(/\D/g, '').slice(0, 4))} />
