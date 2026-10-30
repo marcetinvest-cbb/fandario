@@ -33,6 +33,16 @@ export function maintenance() {
       await q(`update fd_markets set title = 'Blacks Out Night Two' where title = 'Blacks Out Night One' and status in ('open','locked')`);
       await q(`update fd_options set blurb = replace(blurb, 'First Night Legend', '2nd Night Legend') where blurb like '%First Night Legend%'`);
     });
+    // 2026-10-30: strip night-one references from the night-two lines
+    await runFix('fix-blurbs-n2', async () => {
+      const set = (title: string, label: string, blurb: string | null) =>
+        q(`update fd_options o set blurb = $3 from fd_markets m where m.id = o.market_id and m.title = $1 and o.label = $2`, [title, label, blurb]);
+      await set('2nd Night Legend', 'Marc', 'All juiced up, forgets to electrolyte up before drinking and before we know it he\'s in the zone.');
+      await set('2nd Night Legend', 'Dean', 'Might be due for an electric showing. Might already be shirtless.');
+      await set('Blacks Out Night Two', 'Marc', 'Stars could align if he\'s the 2nd Night Legend. Wearing the no-show socks. Electric.');
+      await set('Blacks Out Night Two', 'Jwills', 'Has way too many old fashioneds.');
+      await set('2nd Night Legend', 'Jwills', "Always wanted to go to Texas, doesn't know what to do and turns into the 2nd Night Legend.");
+    });
     // 2026-10-30: Zach took the first nap → Field wins
     await runFix('fix-nap-zach', async () => {
       const m = (await q(`select id from fd_markets where title = 'First One to Take a Nap' and status in ('open','locked')`))[0];
@@ -371,6 +381,15 @@ export async function boostOption(id: number, boostOdds: number | null, minutes:
     const mins = Math.max(5, Math.min(24 * 60, Math.round(minutes || 60)));
     await c.query(`update fd_options set boost_odds=$2, boost_until=now() + ($3 || ' minutes')::interval where id=$1`, [id, b, String(mins)]);
     await feed(c, 'boost', `DARIO BOOST: ${o.label} on "${o.title}" ${fmtOdds(o.odds)} → ${fmtOdds(b)} for ${mins} min`, { market: o.market_id });
+  });
+}
+
+export async function adjustAll(delta: number, note: string) {
+  if (!Number.isInteger(delta) || delta === 0) throw new UserError('Enter an amount.');
+  return tx(async (c) => {
+    const r = await c.query(`update fd_players set balance = balance + $1 where not removed`, [delta]);
+    await feed(c, 'adjust', `The commish ${delta > 0 ? 'gave everyone' : 'docked everyone'} ${fmtMoney(Math.abs(delta))} Dario Bucks${note ? ` — ${note}` : ''}`);
+    return { players: r.rowCount };
   });
 }
 

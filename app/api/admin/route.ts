@@ -30,6 +30,7 @@ export async function POST(req: Request) {
       case 'rejectPitch': await q(`update fd_pitches set status='rejected' where id=$1 and status='pending'`, [n(b.id)]); return { ok: true };
       case 'reopen': return G.reopenMarket(n(b.id));
       case 'adjust': return G.adjustBalance(n(b.playerId), Math.round(n(b.amount) * 100), String(b.note ?? '').slice(0, 80));
+      case 'adjustAll': return G.adjustAll(Math.round(n(b.amount) * 100), String(b.note ?? '').slice(0, 80));
       case 'resetPin': {
         if (!/^\d{4}$/.test(String(b.pin))) throw new UserError('PIN must be 4 digits.');
         await q(`update fd_players set pin_hash=$2, pin=$3 where id=$1`, [n(b.playerId), hashPin(String(b.pin)), String(b.pin)]);

@@ -256,8 +256,20 @@ function PitchAdmin({ pt, act }: { pt: any; act: (b: any, done?: string) => Prom
 }
 
 function Players({ s, act }: { s: any; act: (b: any, done?: string) => Promise<boolean> }) {
+  const [amt, setAmt] = useState('');
+  const [note, setNote] = useState('');
   return (
     <>
+      <div className="card">
+        <b>💸 Give everyone Dario Bucks</b>
+        <div className="row" style={{ marginTop: 8 }}>
+          <input placeholder="10" inputMode="decimal" value={amt} onChange={(e) => setAmt(e.target.value)} style={{ width: 90 }} />
+          <input placeholder="Reason (shows in feed)" value={note} onChange={(e) => setNote(e.target.value)} />
+          <button className="btn sm" disabled={!Number(amt)} onClick={async () => {
+            if (confirm(`Give all ${s.board.length} players $${amt}?`) && await act({ action: 'adjustAll', amount: Number(amt), note }, `Everyone got $${amt}`)) { setAmt(''); setNote(''); }
+          }}>Give all</button>
+        </div>
+      </div>
       <div className="card">
         <b>Names &amp; PINs</b> <span className="small muted">— for when someone forgets</span>
         {[...s.board].sort((a: any, b: any) => a.name.localeCompare(b.name)).map((p: any) => (
@@ -280,7 +292,13 @@ function PlayerRow({ p, act }: { p: any; act: (b: any, done?: string) => Promise
   return (
     <div className="card">
       <div className="row"><b>{p.name}</b><span><b className="green">{fmtMoney(p.balance)}</b> <span className="small muted">cash · {fmtMoney(p.at_risk)} live · {p.w}-{p.l}</span></span></div>
-      <label>Give / take Dario Bucks (use - to take)</label>
+      <label>Add Dario Bucks</label>
+      <div className="acts" style={{ marginTop: 0 }}>
+        {[5, 10, 25, 50].map((v) => (
+          <button key={v} className="btn sm ghost" onClick={() => act({ action: 'adjust', playerId: p.id, amount: v, note }, `+$${v} to ${p.name}`)}>+${v}</button>
+        ))}
+      </div>
+      <label>Or a custom amount (use - to take away)</label>
       <div className="row">
         <input placeholder="10 or -5" value={amt} onChange={(e) => setAmt(e.target.value)} style={{ width: 100 }} />
         <input placeholder="Reason (shows in feed)" value={note} onChange={(e) => setNote(e.target.value)} />
