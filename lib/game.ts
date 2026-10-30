@@ -91,7 +91,8 @@ export async function approvePitch(id: number, title: string, opts: { label: str
 export async function getState(playerId: number | null, opts: { admin?: boolean } = {}) {
   await maintenance();
   const markets = await q(`
-    select m.id, m.title, m.subtitle, m.status, m.lock_at, m.winner_option_id, m.sort,
+    select m.id, m.title, m.subtitle, m.status, m.lock_at, m.winner_option_id, m.sort, m.created_at,
+           extract(epoch from now() - m.created_at)::int as age_s,
            ${OPEN_SQL} as is_open
     from fd_markets m order by
       case when m.status in ('settled','void') then 1 else 0 end, m.created_at desc, m.sort, m.id`);

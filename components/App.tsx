@@ -5,12 +5,13 @@ import { Skyline } from './Skyline';
 import { InstallCard, IosInstallFirst } from './Install';
 
 type Opt = { id: number; market_id: number; label: string; blurb: string | null; odds: number; eff_odds: number; boosted: boolean; boost_until: string | null; active: boolean };
-type Market = { id: number; title: string; subtitle: string | null; status: string; is_open: boolean; lock_at: string | null; winner_option_id: number | null; options: Opt[] };
+type Market = { id: number; age_s?: number; created_at?: string; title: string; subtitle: string | null; status: string; is_open: boolean; lock_at: string | null; winner_option_id: number | null; options: Opt[] };
 type Leg = { id: number; label: string; market_title: string; odds: number; result: string; option_id: number; market_id: number; market_open: boolean; boosted: boolean };
 type Bet = { id: number; player_id: number; player_name: string; stake: number; potential: number; payout: number; status: string; odds: number; legs: Leg[]; created_at: string; tailed_name: string | null; tailed_from: number | null };
 type Sel = { optionId: number; marketId: number; label: string; marketTitle: string; odds: number; boosted: boolean };
 
 export const MAX_LEGS = 3;
+const HOT_SECS = 3 * 60 * 60; // lines added in the last 3 hours get the LIVE treatment
 
 export async function api(path: string, body?: unknown) {
   const r = await fetch(path, body === undefined ? { cache: 'no-store' } : { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
@@ -310,13 +311,16 @@ export default function App() {
             {!hideInstall && <InstallCard onDismiss={() => { setHideInstall(true); try { localStorage.setItem('fd.installHide', '1'); } catch {} }} />}
             {spot.length > 0 && <div className="newdrop">🚨 New line just dropped</div>}
             {[...openMarkets.filter((m: Market) => spot.includes(m.id)), ...openMarkets.filter((m: Market) => !spot.includes(m.id))].map((m: Market) => (
-              <div className={`card mcard ${spot.includes(m.id) ? 'spot' : ''}`} key={m.id} id={`m${m.id}`}
+              <div className={`card mcard ${spot.includes(m.id) ? 'spot' : ''} ${m.is_open && (m.age_s ?? 1e9) < HOT_SECS ? 'hot' : ''}`} key={m.id} id={`m${m.id}`}
                 ref={(el) => { if (el) cardEls.current.set(m.id, el); else cardEls.current.delete(m.id); }}>
+                {m.is_open && (m.age_s ?? 1e9) < HOT_SECS && (
+                  <div className="hotbar"><span className="dot" />LIVE · JUST DROPPED<span className="ago">{(m.age_s ?? 0) < 60 ? 'seconds ago' : `${Math.floor((m.age_s ?? 0) / 60)}m ago`}</span></div>
+                )}
                 <div className="mhead">
                   <div className="t">{m.title}
                     {m.subtitle && <div className="small muted" style={{ fontWeight: 500 }}>{m.subtitle}</div>}
                   </div>
-                  {freshTag.has(m.id) && <span className="chip newchip">New</span>}
+                  {freshTag.has(m.id) && !(m.is_open && (m.age_s ?? 1e9) < HOT_SECS) && <span className="chip newchip">New</span>}
                   {inMarket.has(m.id) && <span className="chip inchip" title="You have a bet on this line">🎟️ In</span>}
                   {m.is_open
                     ? <span className="chip open">{m.lock_at ? `Locks ${lockText(m.lock_at)}` : 'Open'}</span>

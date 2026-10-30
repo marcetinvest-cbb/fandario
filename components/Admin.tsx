@@ -17,9 +17,16 @@ export default function Admin() {
   }, []);
   useEffect(() => { load(); const t = setInterval(() => document.visibilityState === 'visible' && load(), 15000); return () => clearInterval(t); }, [load]);
 
+  const [announce, setAnnounce] = useState<number | null>(null);
   const act = async (body: any, done?: string) => {
     setErr(''); setMsg('');
-    try { await api('/api/admin', body); if (done) setMsg(done); await load(); return true; }
+    try {
+      const r = await api('/api/admin', body);
+      if (done) setMsg(done);
+      await load();
+      if ((body.action === 'createMarket' || body.action === 'approvePitch') && r?.id) setAnnounce(r.id);
+      return true;
+    }
     catch (e: any) { setErr(e.message); return false; }
   };
 
@@ -58,7 +65,7 @@ export default function Admin() {
         {err && <div className="err">{err}</div>}
         {msg && <div className="err" style={{ background: '#17301f', color: '#a5f3c4' }}>{msg}</div>}
 
-        {tab === 'lines' && s.markets.map((m: any) => <MarketAdmin key={m.id} m={m} act={act} />)}
+        {tab === 'lines' && s.markets.map((m: any) => <MarketAdmin key={m.id} m={m} act={act} onAnnounce={() => setAnnounce(m.id)} />)}
         {tab === 'new' && <NewMarket act={act} onDone={() => setTab('lines')} />}
         {tab === 'pitches' && (
           <>
@@ -68,8 +75,49 @@ export default function Admin() {
         )}
         {tab === 'players' && <Players s={s} act={act} />}
         {tab === 'bets' && <AllBets s={s} />}
+        {announce && s.markets.find((m: any) => m.id === announce) && (
+          <Announce m={s.markets.find((m: any) => m.id === announce)} onClose={() => setAnnounce(null)} />
+        )}
       </div>
     </div>
+  );
+}
+
+export function announceText(m: any) {
+  const opts = m.options.filter((o: any) => o.active).map((o: any) => `${o.label} ${fmtOdds(o.eff_odds ?? o.odds)}`);
+  const lock = m.lock_at ? `\n⏰ Locks ${new Date(m.lock_at).toLocaleString([], { weekday: 'short', hour: 'numeric', minute: '2-digit' })}` : '';
+  const by = m.subtitle?.startsWith('Pitched by') ? `\n💡 ${m.subtitle}` : '';
+  return `🚨 NEW LINE IS LIVE ON FANDARIO 🚨\n\n${m.title}${by}\n\n${opts.join('\n')}${lock}\n\nGet your bets in 👉 ${typeof window !== 'undefined' ? window.location.origin : 'https://fandario.vercel.app'}`;
+}
+
+function Announce({ m, onClose }: { m: any; onClose: () => void }) {
+  const text = announceText(m);
+  const [copied, setCopied] = useState(false);
+  const copy = async () => {
+    try { await navigator.clipboard.writeText(text); }
+    catch {
+      const t = document.getElementById('anntext') as HTMLTextAreaElement | null;
+      t?.select(); document.execCommand('copy');
+    }
+    setCopied(true); setTimeout(() => setCopied(false), 2000);
+  };
+  const canShare = typeof navigator !== 'undefined' && !!(navigator as any).share;
+  return (
+    <>
+      <div className="sheetbg" onClick={onClose} />
+      <div className="sheet">
+        <div className="card" style={{ padding: 16, background: 'var(--panel-solid)' }}>
+          <div className="row"><b className="big">📣 Text the group</b><button className="muted" onClick={onClose}>Close</button></div>
+          <p className="small muted" style={{ margin: '4px 0 10px' }}>&quot;{m.title}&quot; is live. Copy this into the group chat:</p>
+          <textarea id="anntext" readOnly value={text} rows={Math.min(14, text.split('\n').length + 1)} style={{ fontSize: 14 }} onFocus={(e) => e.currentTarget.select()} />
+          <div className="acts" style={{ marginTop: 10 }}>
+            <button className="btn sm" onClick={copy}>{copied ? 'Copied ✓' : 'Copy text'}</button>
+            {canShare && <button className="btn sm ghost" onClick={() => (navigator as any).share({ text }).catch(() => {})}>Share…</button>}
+            <a className="btn sm ghost" href={`sms:&body=${encodeURIComponent(text)}`} style={{ textDecoration: 'none' }}>Open Messages</a>
+          </div>
+        </div>
+      </div>
+    </>
   );
 }
 
@@ -80,7 +128,7 @@ function toLocalInput(iso: string | null) {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}T${p(d.getHours())}:${p(d.getMinutes())}`;
 }
 
-function MarketAdmin({ m, act }: { m: any; act: (b: any, done?: string) => Promise<boolean> }) {
+function MarketAdmin({ m, act, onAnnounce }: { m: any; act: (b: any, done?: string) => Promise<boolean>; onAnnounce: () => void }) {
   const [open, setOpen] = useState(false);
   const [winner, setWinner] = useState('');
   const [title, setTitle] = useState(m.title);
@@ -114,6 +162,7 @@ function MarketAdmin({ m, act }: { m: any; act: (b: any, done?: string) => Promi
             if (confirm(`Grade "${m.title}" — ${lbl} wins? Pays out right away.`)) act({ action: 'settle', id: m.id, winner: Number(winner) }, `Graded: ${lbl}`);
           }}>Grade</button>
           <button className="btn sm ghost" onClick={() => confirm(`Void "${m.title}"? Legs on it are refunded/removed from parlays.`) && act({ action: 'settle', id: m.id, winner: null }, 'Voided')}>Void</button>
+          {m.is_open && <button className="btn sm ghost" onClick={onAnnounce}>📣 Text the group</button>}
         </div>
       )}
       {graded && (
