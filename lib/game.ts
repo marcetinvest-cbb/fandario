@@ -43,6 +43,20 @@ export function maintenance() {
       await set('Blacks Out Night Two', 'Jwills', 'Has way too many old fashioneds.');
       await set('2nd Night Legend', 'Jwills', "Always wanted to go to Texas, doesn't know what to do and turns into the 2nd Night Legend.");
     });
+    // 2026-10-30: Jay's new line — first group shot
+    await runFix('add-first-group-shot', async () => {
+      const exists = await q(`select 1 from fd_markets where title = $1`, ["What's the 1st Group Shot Everyone Has to Take?"]);
+      if (exists.length) return;
+      await createMarket("What's the 1st Group Shot Everyone Has to Take?", null, null, [
+        { label: 'Fireball', odds: -150 },
+        { label: 'Lemon Drop', odds: -115 },
+        { label: 'Jack Daniels', odds: 125 },
+        { label: 'Tequila', odds: 250 },
+        { label: 'Bourbon', odds: 300 },
+        { label: 'No Shots Taken', odds: 100 },
+        { label: 'Field', odds: 325, blurb: 'Any other shot.' },
+      ]);
+    });
     // 2026-10-30: Mike blew up the bathroom first
     await runFix('fix-bathroom-mike', async () => {
       const m = (await q(`select id from fd_markets where title = 'First One to Blow Up the Bathroom' and status in ('open','locked')`))[0];
