@@ -31,9 +31,12 @@ const lockText = (iso: string) => new Date(iso).toLocaleString([], { weekday: 's
 export function BetCard({ bet, showName, onTail, meId }: { bet: Bet; showName?: boolean; onTail?: (b: Bet) => void; meId?: number }) {
   const n = bet.legs.length;
   const canTail = onTail && bet.status === 'open' && bet.player_id !== meId && bet.legs.every((l) => l.market_open && l.result === 'open');
-  const icon: Record<string, string> = { won: '✓', lost: '✗', void: '↺', open: '•' };
+  const icon: Record<string, string> = { won: '✓', lost: '✗', void: '↺', open: '' };
+  const hit = bet.legs.filter((l) => l.result === 'won').length;
+  const left = bet.legs.filter((l) => l.result === 'open');
+  const sweating = bet.status === 'open' && n > 1 && hit > 0;
   return (
-    <div className="bet">
+    <div className={`bet ${sweating ? 'sweating' : ''}`}>
       <div className="h">
         <span className="k">
           {showName && <span className="orange">{bet.player_name} · </span>}
@@ -42,8 +45,16 @@ export function BetCard({ bet, showName, onTail, meId }: { bet: Bet; showName?: 
         <span className={`chip ${bet.status === 'open' ? 'open' : bet.status}`}>{bet.status === 'open' ? 'Live' : bet.status === 'won' ? 'Cashed' : bet.status}</span>
       </div>
       {bet.tailed_name && <div className="small muted">🐑 Tailing {bet.tailed_name}</div>}
+      {n > 1 && (
+        <div className="prog">
+          {bet.legs.map((l) => <i key={l.id} className={l.result} />)}
+          <span className={sweating ? 'gold' : 'muted'}>
+            {bet.status === 'open' ? (hit ? `${hit} of ${n} hit · ${left.length === 1 ? `needs ${left[0].label}` : `${left.length} to go`}` : `0 of ${n} hit`) : `${hit} of ${n} hit`}
+          </span>
+        </div>
+      )}
       {bet.legs.map((l) => (
-        <div className="lg" key={l.id}>
+        <div className={`lg ${l.result}`} key={l.id}>
           <span className={`r ${l.result}`}>{icon[l.result]}</span>
           <span style={{ flex: 1 }}>
             <b>{l.label}</b> <span className="muted">{fmtOdds(l.odds)}{l.boosted ? ' 🔥' : ''}</span>
@@ -80,10 +91,10 @@ export default function App() {
   const [hideInstall, setHideInstall] = useState(true);
   useEffect(() => { try { setHideInstall(localStorage.getItem('fd.installHide') === '1'); } catch { setHideInstall(false); } }, []);
 
-  const flash = useCallback((m: string) => {
+  const flash = useCallback((m: string, ms = 2600) => {
     setToast(m);
     clearTimeout(toastT.current);
-    toastT.current = setTimeout(() => setToast(''), 2600);
+    toastT.current = setTimeout(() => setToast(''), ms);
   }, []);
 
   const load = useCallback(async () => {
@@ -136,6 +147,30 @@ export default function App() {
     s?.markets?.forEach((mk: Market) => mk.options.forEach((o) => m.set(o.id, { o, mk })));
     return m;
   }, [s]);
+
+  // A leg of one of MY live parlays just hit → quick toast ("✓ Mike hit — 2 of 3, needs Dario")
+  const seenLegs = useRef<Set<number> | null>(null);
+  useEffect(() => {
+    if (!s?.myBets) return;
+    const won: { id: number; label: string; bet: Bet }[] = [];
+    s.myBets.forEach((b: Bet) => b.legs.forEach((l) => l.result === 'won' && won.push({ id: l.id, label: l.label, bet: b })));
+    if (!seenLegs.current) {
+      let saved: number[] | null = null;
+      try { saved = JSON.parse(localStorage.getItem('fd.seenLegs') || 'null'); } catch {}
+      seenLegs.current = new Set(saved ?? won.map((w) => w.id));
+    }
+    const fresh = won.filter((w) => !seenLegs.current!.has(w.id));
+    fresh.forEach((w) => seenLegs.current!.add(w.id));
+    try { localStorage.setItem('fd.seenLegs', JSON.stringify(Array.from(seenLegs.current))); } catch {}
+    const live = fresh.filter((w) => w.bet.status === 'open' && w.bet.legs.length > 1);
+    if (live.length) {
+      const b = live[0].bet;
+      const hit = b.legs.filter((l) => l.result === 'won').length;
+      const left = b.legs.filter((l) => l.result === 'open');
+      flash(`✓ ${live[0].label} hit! ${hit} of ${b.legs.length}${left.length === 1 ? ` — needs ${left[0].label}` : ''} 😰`, 6000);
+      try { navigator.vibrate?.([30, 50, 30]); } catch {}
+    }
+  }, [s, flash]);
 
   // NEW LINE spotlight: a line this phone hasn't seen yet sits on top of the board, glowing,
   // then slides down into its normal spot. First visit ever = everything counts as seen (no spam).

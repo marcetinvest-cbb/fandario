@@ -67,12 +67,7 @@ export default function Admin() {
           </>
         )}
         {tab === 'players' && <Players s={s} act={act} />}
-        {tab === 'bets' && (
-          <div className="card" style={{ padding: 0 }}>
-            {s.allBets.map((b: any) => <div key={b.id}><BetCard bet={b} showName /><div className="small muted" style={{ padding: '0 14px 8px' }}>{ago(b.created_at)}</div></div>)}
-            {!s.allBets.length && <p className="center muted" style={{ padding: 16 }}>No bets yet.</p>}
-          </div>
-        )}
+        {tab === 'bets' && <AllBets s={s} />}
       </div>
     </div>
   );
@@ -252,6 +247,35 @@ function PitchAdmin({ pt, act }: { pt: any; act: (b: any, done?: string) => Prom
         <div style={{ marginTop: 6 }}><b>{pt.title}</b><div className="small muted">{pt.options.map((o: any) => `${o.label} ${fmtOdds(o.odds)}`).join(' · ')}</div></div>
       )}
     </div>
+  );
+}
+
+function AllBets({ s }: { s: any }) {
+  const [who, setWho] = useState('all');
+  const [st, setSt] = useState<'all' | 'open' | 'done'>('all');
+  const bets = s.allBets.filter((b: any) => (who === 'all' || String(b.player_id) === who) && (st === 'all' || (st === 'open' ? b.status === 'open' : b.status !== 'open')));
+  const live = bets.filter((b: any) => b.status === 'open');
+  const risk = live.reduce((a: number, b: any) => a + b.stake, 0);
+  const owe = live.reduce((a: number, b: any) => a + b.potential, 0);
+  return (
+    <>
+      <div className="row" style={{ gap: 8 }}>
+        <select value={who} onChange={(e) => setWho(e.target.value)}>
+          <option value="all">Everyone ({s.allBets.length} bets)</option>
+          {[...s.board].sort((a: any, b: any) => a.name.localeCompare(b.name)).map((p: any) => (
+            <option key={p.id} value={p.id}>{p.name} ({s.allBets.filter((b: any) => b.player_id === p.id).length})</option>
+          ))}
+        </select>
+        <select value={st} onChange={(e) => setSt(e.target.value as any)} style={{ width: 130 }}>
+          <option value="all">All</option><option value="open">Live</option><option value="done">Settled</option>
+        </select>
+      </div>
+      <p className="small muted" style={{ margin: '8px 2px' }}>{live.length} live · {fmtMoney(risk)} riding · {fmtMoney(owe)} if they all hit</p>
+      <div className="card" style={{ padding: 0 }}>
+        {bets.map((b: any) => <div key={b.id}><BetCard bet={b} showName /><div className="small muted" style={{ padding: '0 14px 8px' }}>{ago(b.created_at)}</div></div>)}
+        {!bets.length && <p className="center muted" style={{ padding: 16 }}>No bets here.</p>}
+      </div>
+    </>
   );
 }
 

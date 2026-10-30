@@ -306,3 +306,18 @@ h2.sec { font-family: var(--display); font-weight: 400; font-size: 20px; letter-
 @keyframes spotIn { from { transform: scale(.85); opacity: 0; } }
 @keyframes spotGlow { from { box-shadow: 0 0 0 1px rgba(255,79,168,.6), 0 0 18px rgba(255,79,168,.35); } to { box-shadow: 0 0 0 2px rgba(255,79,168,.9), 0 0 38px rgba(255,79,168,.6); } }
 .chip.newchip { background: var(--pink); color: #fff; box-shadow: 0 0 10px rgba(255,79,168,.6); }
+
+/* parlay progress + leg results */
+.prog { display: flex; align-items: center; gap: 5px; margin: 6px 0 4px; font-size: 12px; font-weight: 800; }
+.prog i { width: 22px; height: 6px; border-radius: 9px; background: #2a3260; }
+.prog i.won { background: var(--green); box-shadow: 0 0 8px rgba(62,224,127,.6); }
+.prog i.lost { background: var(--red); }
+.prog i.void { background: #59607e; }
+.prog span { margin-left: 6px; }
+.bet .lg .r { width: 22px; height: 22px; flex: none; border-radius: 99px; display: inline-flex; align-items: center; justify-content: center; font-size: 13px; border: 2px solid #3a4378; margin-top: 1px; }
+.bet .lg .r.won { background: var(--green); border-color: var(--green); color: #06210f; box-shadow: 0 0 10px rgba(62,224,127,.5); }
+.bet .lg .r.lost { background: var(--red); border-color: var(--red); color: #fff; }
+.bet .lg .r.void { border-color: #59607e; color: var(--muted); }
+.bet .lg.won b { color: var(--green); }
+.bet .lg.lost b { text-decoration: line-through; opacity: .7; }
+.bet.sweating { background: linear-gradient(90deg, rgba(255,209,102,.07), transparent); }
