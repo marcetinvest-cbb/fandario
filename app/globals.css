@@ -298,3 +298,11 @@ h2.sec { font-family: var(--display); font-weight: 400; font-size: 20px; letter-
 .prow { display: grid; grid-template-columns: 1fr 82px; gap: 6px; margin-bottom: 8px; padding-bottom: 8px; border-bottom: 1px solid rgba(42,50,96,.6); }
 .prow .why { grid-column: 1 / -1; font-size: 13px; padding: 8px 12px; }
 .prow input.bad { outline: 2px solid var(--red); }
+
+/* new line spotlight */
+.newdrop { margin: 12px 0 -4px; text-align: center; font-family: var(--display); font-size: 22px; letter-spacing: 2px; color: #fff; text-shadow: 0 0 10px var(--pink), 0 0 24px var(--pink); animation: dropIn .5s cubic-bezier(.2,1.5,.4,1), blink 1.2s 0.5s 3; }
+@keyframes dropIn { from { transform: translateY(-30px) scale(.8); opacity: 0; } }
+.mcard.spot { border-color: var(--pink); animation: spotIn .6s cubic-bezier(.2,1.4,.4,1), spotGlow 1.4s ease-in-out .6s infinite alternate; }
+@keyframes spotIn { from { transform: scale(.85); opacity: 0; } }
+@keyframes spotGlow { from { box-shadow: 0 0 0 1px rgba(255,79,168,.6), 0 0 18px rgba(255,79,168,.35); } to { box-shadow: 0 0 0 2px rgba(255,79,168,.9), 0 0 38px rgba(255,79,168,.6); } }
+.chip.newchip { background: var(--pink); color: #fff; box-shadow: 0 0 10px rgba(255,79,168,.6); }

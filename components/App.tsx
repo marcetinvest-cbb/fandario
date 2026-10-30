@@ -1,5 +1,5 @@
 'use client';
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { fmtMoney, fmtOdds, payoutCents, parlayDecimal, toAmerican } from '@/lib/odds';
 import { Skyline } from './Skyline';
 import { InstallCard, IosInstallFirst } from './Install';
@@ -137,6 +137,60 @@ export default function App() {
     return m;
   }, [s]);
 
+  // NEW LINE spotlight: a line this phone hasn't seen yet sits on top of the board, glowing,
+  // then slides down into its normal spot. First visit ever = everything counts as seen (no spam).
+  const seenRef = useRef<Set<number> | null>(null);
+  const [spot, setSpot] = useState<number[]>([]);
+  const [freshTag, setFreshTag] = useState<Set<number>>(new Set());
+  const cardEls = useRef<Map<number, HTMLDivElement>>(new Map());
+  const flipFrom = useRef<Map<number, number> | null>(null);
+  useEffect(() => {
+    if (!s?.markets || !s.me) return;
+    const open = s.markets.filter((m: Market) => m.status !== 'settled' && m.status !== 'void').map((m: Market) => m.id);
+    if (!seenRef.current) {
+      let saved: number[] | null = null;
+      try { saved = JSON.parse(localStorage.getItem('fd.seenLines') || 'null'); } catch {}
+      seenRef.current = new Set(saved ?? open);
+      if (!saved) { try { localStorage.setItem('fd.seenLines', JSON.stringify(open)); } catch {} }
+    }
+    const fresh = open.filter((id: number) => !seenRef.current!.has(id) && !spot.includes(id));
+    if (fresh.length) {
+      setSpot((cur) => [...fresh, ...cur]);
+      setFreshTag((cur) => new Set([...Array.from(cur), ...fresh]));
+      try { navigator.vibrate?.([20, 40, 20]); } catch {}
+    }
+  }, [s]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => {
+    if (tab !== 'lines' || !spot.length) return;
+    const t = setTimeout(() => {
+      const from = new Map<number, number>();
+      cardEls.current.forEach((el, id) => from.set(id, el.getBoundingClientRect().top));
+      flipFrom.current = from;
+      spot.forEach((id) => seenRef.current?.add(id));
+      try { localStorage.setItem('fd.seenLines', JSON.stringify(Array.from(seenRef.current ?? []))); } catch {}
+      setSpot([]);
+    }, 3800);
+    return () => clearTimeout(t);
+  }, [tab, spot]);
+
+  useLayoutEffect(() => {
+    const from = flipFrom.current;
+    if (!from) return;
+    flipFrom.current = null;
+    cardEls.current.forEach((el, id) => {
+      const before = from.get(id);
+      if (before === undefined) return;
+      const dy = before - el.getBoundingClientRect().top;
+      if (!dy) return;
+      el.style.transition = 'none';
+      el.style.transform = `translateY(${dy}px)`;
+      el.getBoundingClientRect();
+      el.style.transition = 'transform 1.1s cubic-bezier(.2,.8,.2,1)';
+      el.style.transform = '';
+    });
+  }, [spot]);
+
   if (!s) return <div className="wrap"><div className="hero"><div className="brand">Fan<b>Dario</b></div><p className="muted">{loadErr || 'Loading the board…'}</p></div></div>;
   if (!s.me) return <Login onDone={load} />;
 
@@ -205,12 +259,15 @@ export default function App() {
               <Skyline />
             </div>
             {!hideInstall && <InstallCard onDismiss={() => { setHideInstall(true); try { localStorage.setItem('fd.installHide', '1'); } catch {} }} />}
-            {openMarkets.map((m: Market) => (
-              <div className="card mcard" key={m.id} id={`m${m.id}`}>
+            {spot.length > 0 && <div className="newdrop">🚨 New line just dropped</div>}
+            {[...openMarkets.filter((m: Market) => spot.includes(m.id)), ...openMarkets.filter((m: Market) => !spot.includes(m.id))].map((m: Market) => (
+              <div className={`card mcard ${spot.includes(m.id) ? 'spot' : ''}`} key={m.id} id={`m${m.id}`}
+                ref={(el) => { if (el) cardEls.current.set(m.id, el); else cardEls.current.delete(m.id); }}>
                 <div className="mhead">
                   <div className="t">{m.title}
                     {m.subtitle && <div className="small muted" style={{ fontWeight: 500 }}>{m.subtitle}</div>}
                   </div>
+                  {freshTag.has(m.id) && <span className="chip newchip">New</span>}
                   {m.is_open
                     ? <span className="chip open">{m.lock_at ? `Locks ${lockText(m.lock_at)}` : 'Open'}</span>
                     : <span className="chip lock">Locked</span>}
