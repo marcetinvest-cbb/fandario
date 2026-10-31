@@ -43,6 +43,33 @@ export function maintenance() {
       await set('Blacks Out Night Two', 'Jwills', 'Has way too many old fashioneds.');
       await set('2nd Night Legend', 'Jwills', "Always wanted to go to Texas, doesn't know what to do and turns into the 2nd Night Legend.");
     });
+    // 2026-10-31: stadium lines
+    await runFix('add-stadium-four', async () => {
+      const add = async (t: string, sub: string | null, lock: string | null, o: { label: string; odds: number; blurb?: string }[]) => {
+        if ((await q(`select 1 from fd_markets where title = $1`, [t])).length) return;
+        await createMarket(t, sub, lock, o);
+      };
+      await add('First to Spill a Full Beer in the Stadium', 'Has to be a real spill, not a drip', null, [
+        { label: 'Dean', odds: -120 }, { label: 'Nick', odds: 150 }, { label: 'Mike', odds: 200 },
+        { label: 'Dario', odds: 250 }, { label: 'Field', odds: 300, blurb: 'Anyone else.' },
+      ]);
+      await add("Texas' First TD: Pass or Run?", 'Locks at kickoff', '2026-10-31T23:30:00Z', [
+        { label: 'Arch passing TD', odds: -140 }, { label: 'Rushing TD', odds: 120 },
+        { label: 'Defense or special teams TD', odds: 600 },
+      ]);
+      await add('First One Kicked Out or Warned by Security', 'A security warning counts', null, [
+        { label: 'Dean', odds: 400 }, { label: 'Marc', odds: 500 }, { label: 'Nick', odds: 600 },
+        { label: 'Nobody', odds: -500, blurb: 'Everyone behaves.' },
+      ]);
+      await add('First One on the Jumbotron / TV', 'Counts if the group sees it or a TV clip hits the group chat', null, [
+        { label: 'Dario', odds: 250, blurb: 'Birthday boy energy, waving like a maniac.' },
+        { label: 'Nick', odds: 300 }, { label: 'Marc', odds: 300 },
+        { label: 'Dean', odds: 400, blurb: 'Shirtless = camera magnet.' },
+        { label: 'Modak', odds: 500, blurb: 'Cowbell gets the camera.' },
+        { label: 'Nobody', odds: 150, blurb: 'The camera never finds us.' },
+        { label: 'Field', odds: 350, blurb: 'Anyone else.' },
+      ]);
+    });
     // 2026-10-31: stadium round
     await runFix('add-stadium-round', async () => {
       const t = 'Buys the 1st Round of Drinks in the Stadium';
