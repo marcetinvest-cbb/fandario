@@ -25,3 +25,9 @@ export function fmtMoney(cents: number): string {
   const s = v % 1 === 0 ? v.toFixed(0) : v.toFixed(2);
   return `${neg ? '-' : ''}$${s}`;
 }
+
+// Forgiving odds parser: accepts "-125", "- 125", "−125" (phone minus), "+250", "250", "2,500".
+export function parseOdds(v: unknown): number {
+  const s = String(v ?? '').replace(/[\u2212\u2010-\u2015\uFE63\uFF0D]/g, '-').replace(/[\s,+]/g, '');
+  return /^-?\d+$/.test(s) ? Number(s) : NaN;
+}

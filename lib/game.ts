@@ -1,7 +1,7 @@
 import 'server-only';
 import type { PoolClient } from 'pg';
 import { q, tx, UserError } from './db';
-import { fmtMoney, fmtOdds, isValidAmerican, payoutCents, toAmerican, parlayDecimal } from './odds';
+import { fmtMoney, fmtOdds, isValidAmerican, payoutCents, toAmerican, parlayDecimal, parseOdds } from './odds';
 
 export const MAX_LEGS = 3;
 export const MIN_STAKE = 100;
@@ -42,6 +42,15 @@ export function maintenance() {
       await set('Blacks Out Night Two', 'Marc', 'Stars could align if he\'s the 2nd Night Legend. Wearing the no-show socks. Electric.');
       await set('Blacks Out Night Two', 'Jwills', 'Has way too many old fashioneds.');
       await set('2nd Night Legend', 'Jwills', "Always wanted to go to Texas, doesn't know what to do and turns into the 2nd Night Legend.");
+    });
+    // 2026-10-31: stadium round
+    await runFix('add-stadium-round', async () => {
+      const t = 'Buys the 1st Round of Drinks in the Stadium';
+      if ((await q(`select 1 from fd_markets where title = $1`, [t])).length) return;
+      await createMarket(t, null, null, [
+        { label: 'John', odds: -150 }, { label: 'Jay', odds: -125 }, { label: 'Mike', odds: -110 },
+        { label: 'Dario', odds: 200 }, { label: 'Field', odds: 250, blurb: 'Anyone else.' }, { label: 'No One', odds: 300, blurb: 'Nobody buys a round in the stadium.' },
+      ]);
     });
     // 2026-10-31: game-day lines — lock at kickoff (6:30 PM CT = 23:30Z)
     await runFix('add-gameday-total-arch', async () => {
@@ -96,7 +105,7 @@ export function maintenance() {
 export async function submitPitch(playerId: number, title: string, opts: { label: string; odds: number; blurb?: string }[]) {
   title = (title || '').trim().slice(0, 90);
   if (title.length < 4) throw new UserError('What\'s the bet? Give it a title.');
-  const clean = (opts || []).map((o) => ({ label: String(o.label || '').trim().slice(0, 30), odds: Number(o.odds), blurb: String(o.blurb || '').trim().slice(0, 200) }))
+  const clean = (opts || []).map((o) => ({ label: String(o.label || '').trim().slice(0, 30), odds: parseOdds(o.odds), blurb: String(o.blurb || '').trim().slice(0, 200) }))
     .filter((o) => o.label);
   if (clean.length < 2) throw new UserError('Add at least 2 names.');
   for (const o of clean) if (!isValidAmerican(o.odds)) throw new UserError(`Line for ${o.label} should look like -150 or +300.`);
@@ -110,7 +119,7 @@ export async function submitPitch(playerId: number, title: string, opts: { label
   });
 }
 
-export async function approvePitch(id: number, title: string, opts: { label: string; odds: number; blurb?: string }[]) {
+export async function approvePitch(id: number, title: string, opts: { label: string; odds: number | string; blurb?: string }[]) {
   const pr = (await q(`select p.*, pl.name from fd_pitches p join fd_players pl on pl.id = p.player_id where p.id = $1`, [id]))[0];
   if (!pr || pr.status !== 'pending') throw new UserError('That pitch was already handled.');
   const r = await createMarket(title || pr.title, `Pitched by ${pr.name}`, null, opts?.length ? opts : pr.options);
@@ -350,12 +359,12 @@ export async function reopenMarket(marketId: number) {
 /* ---------------- admin edits ---------------- */
 
 function checkOdds(o: unknown): number {
-  const n = Number(o);
-  if (!isValidAmerican(n)) throw new UserError(`Odds "${o}" aren't valid — use -100 or lower, or +100 or higher.`);
+  const n = parseOdds(o);
+  if (!isValidAmerican(n)) throw new UserError(`Odds "${o}" aren't valid — use like -125 or +250 (must be 100 or more either way).`);
   return n;
 }
 
-export async function createMarket(title: string, subtitle: string | null, lockAt: string | null, opts: { label: string; odds: number; blurb?: string }[]) {
+export async function createMarket(title: string, subtitle: string | null, lockAt: string | null, opts: { label: string; odds: number | string; blurb?: string }[]) {
   title = (title || '').trim();
   if (!title) throw new UserError('Give the line a title.');
   if (opts.length < 2) throw new UserError('Need at least 2 options.');
@@ -385,7 +394,7 @@ export async function updateMarket(id: number, f: { title?: string; subtitle?: s
   });
 }
 
-export async function addOption(marketId: number, label: string, odds: number, blurb?: string) {
+export async function addOption(marketId: number, label: string, odds: number | string, blurb?: string) {
   const n = checkOdds(odds);
   if (!label?.trim()) throw new UserError('Name the pick.');
   return tx(async (c) => {
@@ -394,7 +403,7 @@ export async function addOption(marketId: number, label: string, odds: number, b
   });
 }
 
-export async function updateOption(id: number, f: { label?: string; odds?: number; blurb?: string | null; active?: boolean }) {
+export async function updateOption(id: number, f: { label?: string; odds?: number | string; blurb?: string | null; active?: boolean }) {
   return tx(async (c) => {
     const o = (await c.query(`select o.*, m.title from fd_options o join fd_markets m on m.id=o.market_id where o.id=$1 for update of o`, [id])).rows[0];
     if (!o) throw new UserError('Pick not found.');
@@ -407,7 +416,7 @@ export async function updateOption(id: number, f: { label?: string; odds?: numbe
   });
 }
 
-export async function boostOption(id: number, boostOdds: number | null, minutes: number) {
+export async function boostOption(id: number, boostOdds: number | string | null, minutes: number) {
   return tx(async (c) => {
     const o = (await c.query(`select o.*, m.title from fd_options o join fd_markets m on m.id=o.market_id where o.id=$1`, [id])).rows[0];
     if (!o) throw new UserError('Pick not found.');

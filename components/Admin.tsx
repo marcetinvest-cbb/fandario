@@ -1,6 +1,6 @@
 'use client';
 import { useCallback, useEffect, useState } from 'react';
-import { fmtMoney, fmtOdds } from '@/lib/odds';
+import { fmtMoney, fmtOdds, parseOdds } from '@/lib/odds';
 import { api, ago, BetCard } from './App';
 
 export default function Admin() {
@@ -187,7 +187,7 @@ function MarketAdmin({ m, act, onAnnounce }: { m: any; act: (b: any, done?: stri
             <input placeholder="+250" value={add.odds} onChange={(e) => setAdd({ ...add, odds: e.target.value })} />
             <textarea placeholder="Blurb (optional)" value={add.blurb} onChange={(e) => setAdd({ ...add, blurb: e.target.value })} />
           </div>
-          <button className="btn sm" onClick={async () => { if (await act({ action: 'addOption', marketId: m.id, label: add.label, odds: add.odds.replace('+', ''), blurb: add.blurb }, 'Pick added')) setAdd({ label: '', odds: '', blurb: '' }); }}>Add pick</button>
+          <button className="btn sm" onClick={async () => { if (await act({ action: 'addOption', marketId: m.id, label: add.label, odds: add.odds, blurb: add.blurb }, 'Pick added')) setAdd({ label: '', odds: '', blurb: '' }); }}>Add pick</button>
         </>
       )}
     </div>
@@ -208,7 +208,7 @@ function OptionAdmin({ o, act }: { o: any; act: (b: any, done?: string) => Promi
       <textarea value={blurb} onChange={(e) => setBlurb(e.target.value)} />
       <div className="acts" style={{ gridColumn: '1 / -1', marginTop: 0 }}>
         <span className="small muted" style={{ alignSelf: 'center' }}>{o.bet_count} bets</span>
-        {dirty && <button className="btn sm" onClick={() => act({ action: 'updateOption', id: o.id, label, odds: odds.replace('+', ''), blurb }, 'Saved (existing bets keep their odds)')}>Save</button>}
+        {dirty && <button className="btn sm" onClick={() => act({ action: 'updateOption', id: o.id, label, odds, blurb }, 'Saved (existing bets keep their odds)')}>Save</button>}
         <button className="btn sm ghost" onClick={() => act({ action: 'updateOption', id: o.id, active: !o.active }, o.active ? 'Pulled from the board' : 'Back on the board')}>{o.active ? 'Pull' : 'Restore'}</button>
         {o.boosted
           ? <button className="btn sm ghost" onClick={() => act({ action: 'boost', id: o.id, odds: null }, 'Boost ended')}>🔥 {fmtOdds(o.eff_odds)} · End boost</button>
@@ -231,8 +231,11 @@ function NewMarket({ act, onDone }: { act: (b: any, done?: string) => Promise<bo
   const [text, setText] = useState('');
   const parsed = text.split('\n').map((l) => l.trim()).filter(Boolean).map((l) => {
     // "-150 Nick, blurb"  or  "Nick | -150 | blurb"
-    let m = l.match(/^([+-]?\s?[\d,]+)\s+([^,]+?)(?:,\s*(.*))?$/);
+    l = l.replace(/[\u2212\u2010-\u2015\uFE63\uFF0D]/g, '-');
+    let m = l.match(/^([+-]?\s*[\d,]+)\s+([^,]+?)(?:,\s*(.*))?$/);
     if (m) return { odds: m[1].replace(/[\s,+]/g, ''), label: m[2].trim(), blurb: m[3] || '' };
+    const m2 = l.match(/^([^|]+?)\s+([+-]\s*[\d,]+|[\d,]{3,})$/); // "John -150"
+    if (m2) return { odds: m2[2].replace(/[\s,+]/g, ''), label: m2[1].trim(), blurb: '' };
     const parts = l.split('|').map((x) => x.trim());
     return { label: parts[0], odds: (parts[1] || '').replace(/[\s,+]/g, ''), blurb: parts[2] || '' };
   });
@@ -247,7 +250,7 @@ function NewMarket({ act, onDone }: { act: (b: any, done?: string) => Promise<bo
       {parsed.length > 0 && (
         <div className="small" style={{ marginTop: 8 }}>
           {parsed.map((p, i) => {
-            const n = Number(p.odds);
+            const n = parseOdds(p.odds);
             const okOdds = Number.isInteger(n) && Math.abs(n) >= 100;
             return <div key={i} className={okOdds ? '' : 'red'}>{okOdds ? '✓' : '✗'} <b>{p.label || '?'}</b> {okOdds ? fmtOdds(n) : `"${p.odds}" not valid odds`} <span className="muted">{p.blurb}</span></div>;
           })}
@@ -256,7 +259,7 @@ function NewMarket({ act, onDone }: { act: (b: any, done?: string) => Promise<bo
       <label>Auto-lock at (optional)</label>
       <input type="datetime-local" value={lockAt} onChange={(e) => setLockAt(e.target.value)} />
       <button className="btn" style={{ marginTop: 14 }} disabled={!title || parsed.length < 2} onClick={async () => {
-        if (await act({ action: 'createMarket', title, subtitle, lockAt: lockAt ? new Date(lockAt).toISOString() : null, options: parsed.map((p) => ({ ...p, odds: Number(p.odds) })) }, `"${title}" is live — everyone sees it now`)) {
+        if (await act({ action: 'createMarket', title, subtitle, lockAt: lockAt ? new Date(lockAt).toISOString() : null, options: parsed.map((p) => ({ ...p, odds: parseOdds(p.odds) })) }, `"${title}" is live — everyone sees it now`)) {
           setTitle(''); setSubtitle(''); setText(''); setLockAt(''); onDone();
         }
       }}>Post line to the board 🚨</button>

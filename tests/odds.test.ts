@@ -23,3 +23,16 @@ describe('odds', () => {
     expect(isValidAmerican(-100)).toBe(true);
   });
 });
+
+import { parseOdds } from '@/lib/odds';
+describe('parseOdds', () => {
+  it('is forgiving', () => {
+    expect(parseOdds('-125')).toBe(-125);
+    expect(parseOdds('- 125')).toBe(-125);
+    expect(parseOdds('\u2212125')).toBe(-125);
+    expect(parseOdds('+250')).toBe(250);
+    expect(parseOdds(' 2,500 ')).toBe(2500);
+    expect(parseOdds(-110)).toBe(-110);
+    expect(Number.isNaN(parseOdds('abc'))).toBe(true);
+  });
+});

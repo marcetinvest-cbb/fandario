@@ -22,11 +22,11 @@ export async function POST(req: Request) {
     switch (b.action) {
       case 'createMarket': return G.createMarket(b.title, b.subtitle, b.lockAt, b.options ?? []);
       case 'updateMarket': return G.updateMarket(n(b.id), { title: b.title, subtitle: b.subtitle, lockAt: b.lockAt, status: b.status });
-      case 'addOption': return G.addOption(n(b.marketId), b.label, n(b.odds), b.blurb);
-      case 'updateOption': return G.updateOption(n(b.id), { label: b.label, odds: b.odds === undefined ? undefined : n(b.odds), blurb: b.blurb, active: b.active });
-      case 'boost': return G.boostOption(n(b.id), b.odds == null || b.odds === '' ? null : n(b.odds), n(b.minutes));
+      case 'addOption': return G.addOption(n(b.marketId), b.label, b.odds, b.blurb);
+      case 'updateOption': return G.updateOption(n(b.id), { label: b.label, odds: b.odds === undefined ? undefined : b.odds, blurb: b.blurb, active: b.active });
+      case 'boost': return G.boostOption(n(b.id), b.odds == null || b.odds === '' ? null : b.odds, n(b.minutes));
       case 'settle': return G.settleMarket(n(b.id), b.winner == null ? null : n(b.winner));
-      case 'approvePitch': return G.approvePitch(n(b.id), b.title, (b.options ?? []).map((o: any) => ({ ...o, odds: Number(String(o.odds).replace('+', '')) })));
+      case 'approvePitch': return G.approvePitch(n(b.id), b.title, (b.options ?? []));
       case 'rejectPitch': await q(`update fd_pitches set status='rejected' where id=$1 and status='pending'`, [n(b.id)]); return { ok: true };
       case 'reopen': return G.reopenMarket(n(b.id));
       case 'adjust': return G.adjustBalance(n(b.playerId), Math.round(n(b.amount) * 100), String(b.note ?? '').slice(0, 80));
