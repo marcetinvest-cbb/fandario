@@ -43,6 +43,22 @@ export function maintenance() {
       await set('Blacks Out Night Two', 'Jwills', 'Has way too many old fashioneds.');
       await set('2nd Night Legend', 'Jwills', "Always wanted to go to Texas, doesn't know what to do and turns into the 2nd Night Legend.");
     });
+    // 2026-10-31: game-day lines — lock at kickoff (6:30 PM CT = 23:30Z)
+    await runFix('add-gameday-total-arch', async () => {
+      const KO = '2026-10-31T23:30:00Z';
+      const t1 = 'Texas vs Miss St: O/U 50.5 Total Points';
+      if (!(await q(`select 1 from fd_markets where title = $1`, [t1])).length)
+        await createMarket(t1, 'Final score incl. OT · locks at kickoff', KO, [
+          { label: 'Over 50.5', odds: -113, blurb: '51+ total points. Hook \'em, light up the scoreboard.' },
+          { label: 'Under 50.5', odds: -107, blurb: '50 or fewer. Defense travels.' },
+        ]);
+      const t2 = 'Arch Manning O/U 2.5 Passing TDs';
+      if (!(await q(`select 1 from fd_markets where title = $1`, [t2])).length)
+        await createMarket(t2, 'Passing TDs only (rushing TDs don\'t count) · locks at kickoff', KO, [
+          { label: 'Over 2.5', odds: 175, blurb: '3+ passing TDs. Arch goes off on Halloween.' },
+          { label: 'Under 2.5', odds: -225, blurb: '2 or fewer. He averages about 1.7 a game this year.' },
+        ]);
+    });
     // 2026-10-30: Jay's new line — first group shot
     await runFix('add-first-group-shot', async () => {
       const exists = await q(`select 1 from fd_markets where title = $1`, ["What's the 1st Group Shot Everyone Has to Take?"]);
