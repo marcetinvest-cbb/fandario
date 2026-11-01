@@ -131,12 +131,15 @@ function toLocalInput(iso: string | null) {
 function MarketAdmin({ m, act, onAnnounce }: { m: any; act: (b: any, done?: string) => Promise<boolean>; onAnnounce: () => void }) {
   const [open, setOpen] = useState(false);
   const [winner, setWinner] = useState('');
+  const [hits, setHits] = useState<number[]>([]);
   const [title, setTitle] = useState(m.title);
   const [lockAt, setLockAt] = useState(toLocalInput(m.lock_at));
   const [add, setAdd] = useState({ label: '', odds: '', blurb: '' });
   const graded = m.status === 'settled' || m.status === 'void';
   const betCount = m.options.reduce((a: number, o: any) => a + o.bet_count, 0);
-  const winnerLabel = m.options.find((o: any) => o.id === m.winner_option_id)?.label;
+  const winnerLabel = m.multi
+    ? (m.options.filter((o: any) => (m.winner_ids ?? []).includes(o.id)).map((o: any) => o.label).join(', ') || 'nobody')
+    : m.options.find((o: any) => o.id === m.winner_option_id)?.label;
 
   return (
     <div className="card">
@@ -153,14 +156,33 @@ function MarketAdmin({ m, act, onAnnounce }: { m: any; act: (b: any, done?: stri
           {m.status === 'open'
             ? <button className="btn sm ghost" onClick={() => act({ action: 'updateMarket', id: m.id, status: 'locked' }, 'Locked')}>🔒 Lock</button>
             : <button className="btn sm ghost" onClick={() => act({ action: 'updateMarket', id: m.id, status: 'open' }, 'Reopened for betting')}>🔓 Open betting</button>}
-          <select value={winner} onChange={(e) => setWinner(e.target.value)} style={{ width: 'auto', flex: 1, padding: '6px 8px' }}>
-            <option value="">Pick winner…</option>
-            {m.options.map((o: any) => <option key={o.id} value={o.id}>{o.label}</option>)}
-          </select>
-          <button className="btn sm" disabled={!winner} onClick={() => {
-            const lbl = m.options.find((o: any) => String(o.id) === winner)?.label;
-            if (confirm(`Grade "${m.title}" — ${lbl} wins? Pays out right away.`)) act({ action: 'settle', id: m.id, winner: Number(winner) }, `Graded: ${lbl}`);
-          }}>Grade</button>
+          {m.multi ? (
+            <div style={{ width: '100%' }}>
+              <div className="small muted" style={{ margin: '4px 0' }}>Check everyone who scored, then Grade (check none = nobody scored):</div>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+                {m.options.map((o: any) => (
+                  <label key={o.id} className={`hitbox ${hits.includes(o.id) ? 'on' : ''}`}>
+                    <input type="checkbox" checked={hits.includes(o.id)} onChange={() => setHits(hits.includes(o.id) ? hits.filter((x) => x !== o.id) : [...hits, o.id])} /> {o.label}
+                  </label>
+                ))}
+              </div>
+              <button className="btn sm" style={{ marginTop: 8 }} onClick={() => {
+                const lbl = m.options.filter((o: any) => hits.includes(o.id)).map((o: any) => o.label).join(', ') || 'NOBODY';
+                if (confirm(`Grade "${m.title}" — scored: ${lbl}? Pays out right away.`)) act({ action: 'settle', id: m.id, winners: hits }, `Graded: ${lbl}`);
+              }}>Grade ({hits.length} scored)</button>
+            </div>
+          ) : (
+            <>
+              <select value={winner} onChange={(e) => setWinner(e.target.value)} style={{ width: 'auto', flex: 1, padding: '6px 8px' }}>
+                <option value="">Pick winner…</option>
+                {m.options.map((o: any) => <option key={o.id} value={o.id}>{o.label}</option>)}
+              </select>
+              <button className="btn sm" disabled={!winner} onClick={() => {
+                const lbl = m.options.find((o: any) => String(o.id) === winner)?.label;
+                if (confirm(`Grade "${m.title}" — ${lbl} wins? Pays out right away.`)) act({ action: 'settle', id: m.id, winner: Number(winner) }, `Graded: ${lbl}`);
+              }}>Grade</button>
+            </>
+          )}
           <button className="btn sm ghost" onClick={() => confirm(`Void "${m.title}"? Legs on it are refunded/removed from parlays.`) && act({ action: 'settle', id: m.id, winner: null }, 'Voided')}>Void</button>
           {m.is_open && <button className="btn sm ghost" onClick={onAnnounce}>📣 Text the group</button>}
         </div>
@@ -228,6 +250,7 @@ function NewMarket({ act, onDone }: { act: (b: any, done?: string) => Promise<bo
   const [title, setTitle] = useState('');
   const [subtitle, setSubtitle] = useState('');
   const [lockAt, setLockAt] = useState('');
+  const [multi, setMulti] = useState(false);
   const [text, setText] = useState('');
   const parsed = text.split('\n').map((l) => l.trim()).filter(Boolean).map((l) => {
     // "-150 Nick, blurb"  or  "Nick | -150 | blurb"
@@ -258,9 +281,12 @@ function NewMarket({ act, onDone }: { act: (b: any, done?: string) => Promise<bo
       )}
       <label>Auto-lock at (optional)</label>
       <input type="datetime-local" value={lockAt} onChange={(e) => setLockAt(e.target.value)} />
+      <label className={`hitbox ${multi ? 'on' : ''}`} style={{ marginTop: 12, display: 'flex' }}>
+        <input type="checkbox" checked={multi} onChange={(e) => setMulti(e.target.checked)} /> More than one pick can win (anytime TD style) — guys can parlay several picks from this line
+      </label>
       <button className="btn" style={{ marginTop: 14 }} disabled={!title || parsed.length < 2} onClick={async () => {
-        if (await act({ action: 'createMarket', title, subtitle, lockAt: lockAt ? new Date(lockAt).toISOString() : null, options: parsed.map((p) => ({ ...p, odds: parseOdds(p.odds) })) }, `"${title}" is live — everyone sees it now`)) {
-          setTitle(''); setSubtitle(''); setText(''); setLockAt(''); onDone();
+        if (await act({ action: 'createMarket', title, subtitle, lockAt: lockAt ? new Date(lockAt).toISOString() : null, options: parsed.map((p) => ({ ...p, odds: parseOdds(p.odds) })), multi }, `"${title}" is live — everyone sees it now`)) {
+          setTitle(''); setSubtitle(''); setText(''); setLockAt(''); setMulti(false); onDone();
         }
       }}>Post line to the board 🚨</button>
     </div>

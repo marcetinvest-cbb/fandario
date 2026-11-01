@@ -43,6 +43,10 @@ export function maintenance() {
       await set('Blacks Out Night Two', 'Jwills', 'Has way too many old fashioneds.');
       await set('2nd Night Legend', 'Jwills', "Always wanted to go to Texas, doesn't know what to do and turns into the 2nd Night Legend.");
     });
+    // 2026-10-31: Jay posted the anytime TD line by hand ("TD Scorer: Texas vs Miss St…") — make it multi-winner.
+    await runFix('atd-multi', async () => {
+      await q(`update fd_markets set multi = true where title ilike 'TD Scorer: Texas vs Miss St%' or title ilike 'Anytime TD Scorer: Texas vs Miss St%'`);
+    });
     // 2026-10-31: stadium lines
     await runFix('add-stadium-four', async () => {
       const add = async (t: string, sub: string | null, lock: string | null, o: { label: string; odds: number; blurb?: string }[]) => {
@@ -125,6 +129,27 @@ export function maintenance() {
       await q(`update fd_options set label = 'Field (Zach)' where id = $1`, [f.id]);
       await settleMarket(m.id, f.id);
     });
+    // 2026-10-31 final: Texas 31, Miss St 3. TDs: Coleman (rec), Watson fumble return (D), Raleek Brown (rec), Mosley V (rec).
+    // Manning 3 passing TDs. First Texas TD = Coleman 14-yd pass. Stadium lines locked (game over), results from Jay pending.
+    await runFix('grade-game-1031', async () => {
+      const grade = async (titleLike: string, labels: string[] | string) => {
+        const m = (await q(`select id, multi from fd_markets where title ilike $1 and status in ('open','locked') order by id desc limit 1`, [titleLike]))[0];
+        if (!m) return;
+        const want = Array.isArray(labels) ? labels : [labels];
+        const opts = await q<{ id: number; label: string }>(`select id, label from fd_options where market_id = $1`, [m.id]);
+        const ids = want.map((l) => opts.find((o) => o.label.toLowerCase() === l.toLowerCase())?.id).filter((x): x is number => !!x);
+        if (ids.length !== want.length) { console.error('grade: missing option', titleLike, want); return; }
+        await settleMarket(m.id, m.multi ? ids : ids[0]);
+      };
+      await grade('Texas vs Miss St: O/U 50.5 Total Points', 'Under 50.5');
+      await grade('Arch Manning O/U 2.5 Passing TDs', 'Over 2.5');
+      await grade("Texas' First TD: Pass or Run?", 'Arch passing TD');
+      await grade('TD Scorer: Texas vs Miss St%', ['Raleek Brown', 'Cam Coleman', 'Emmett Mosley V', 'Texas D or special teams']);
+      for (const t of ['First One on the Jumbotron / TV', 'First One Kicked Out or Warned by Security', 'First to Spill a Full Beer in the Stadium']) {
+        const m = (await q(`select id from fd_markets where title = $1 and status = 'open'`, [t]))[0];
+        if (m) await updateMarket(m.id, { status: 'locked' });
+      }
+    });
   })().catch((e) => { g.__fdFix = undefined; console.error('maintenance', e); });
   return g.__fdFix;
 }
@@ -157,7 +182,7 @@ export async function approvePitch(id: number, title: string, opts: { label: str
 export async function getState(playerId: number | null, opts: { admin?: boolean } = {}) {
   await maintenance();
   const markets = await q(`
-    select m.id, m.title, m.subtitle, m.status, m.lock_at, m.winner_option_id, m.sort, m.created_at,
+    select m.id, m.title, m.subtitle, m.status, m.lock_at, m.winner_option_id, m.winner_ids, m.multi, m.sort, m.created_at,
            extract(epoch from now() - m.created_at)::int as age_s,
            ${OPEN_SQL} as is_open
     from fd_markets m order by
@@ -263,13 +288,15 @@ export async function placeBet(playerId: number, legsIn: LegInput[], stake: numb
     const p = pr.rows[0];
     if (!p) throw new UserError('Sign in again.');
     const or = await c.query(
-      `select o.id, o.label, o.market_id, o.active, ${EFF_ODDS} as eff, ${BOOSTED} as boosted, m.title, ${OPEN_SQL} as open
+      `select o.id, o.label, o.market_id, o.active, ${EFF_ODDS} as eff, ${BOOSTED} as boosted, m.title, m.multi, ${OPEN_SQL} as open
        from fd_options o join fd_markets m on m.id = o.market_id where o.id = any($1)`,
       [ids],
     );
     if (or.rowCount !== ids.length) throw new UserError('One of those lines no longer exists.');
     const rows = ids.map((id) => or.rows.find((r) => r.id === id)!);
-    if (new Set(rows.map((r) => r.market_id)).size !== rows.length)
+    // Anytime-TD style lines (multi) can have several picks in one parlay; normal lines can't.
+    const single = rows.filter((r) => !r.multi);
+    if (new Set(single.map((r) => r.market_id)).size !== single.length)
       throw new UserError("Can't parlay two picks from the same line.");
     for (const r of rows) {
       if (!r.open) throw new UserError(`"${r.title}" is locked.`);
@@ -337,7 +364,9 @@ async function evaluateBet(c: PoolClient, betId: number, quiet = false) {
   }
 }
 
-export async function settleMarket(marketId: number, winnerOptionId: number | null) {
+export async function settleMarket(marketId: number, winner: number | null | number[]) {
+  if (Array.isArray(winner)) return settleMulti(marketId, winner.map(Number));
+  const winnerOptionId = winner;
   return tx(async (c) => {
     const m = (await c.query(`select * from fd_markets where id = $1 for update`, [marketId])).rows[0];
     if (!m) throw new UserError('Line not found.');
@@ -363,6 +392,25 @@ export async function settleMarket(marketId: number, winnerOptionId: number | nu
   });
 }
 
+// Anytime TD: every pick that hit wins; everything else loses. An empty list = nobody hit.
+async function settleMulti(marketId: number, winners: number[]) {
+  return tx(async (c) => {
+    const m = (await c.query(`select * from fd_markets where id = $1 for update`, [marketId])).rows[0];
+    if (!m) throw new UserError('Line not found.');
+    if (m.status === 'settled' || m.status === 'void') throw new UserError('Already graded — reopen it first.');
+    const labels = winners.length
+      ? (await c.query(`select label from fd_options where market_id=$1 and id = any($2) order by sort, id`, [marketId, winners])).rows.map((r) => r.label)
+      : [];
+    if (labels.length !== winners.length) throw new UserError('Pick winners from this line.');
+    await c.query(`update fd_markets set status='settled', winner_option_id=$2, winner_ids=$3, settled_at=now() where id=$1`, [marketId, winners[0] ?? null, winners]);
+    await c.query(`update fd_legs set result = case when option_id = any($2) then 'won' else 'lost' end where market_id = $1 and result = 'open'`, [marketId, winners]);
+    await feed(c, 'result', labels.length ? `RESULT: ${labels.join(', ')} hit on "${m.title}"` : `RESULT: nobody hit on "${m.title}"`, { market: marketId });
+    const bets = (await c.query(`select distinct l.bet_id from fd_legs l join fd_bets b on b.id = l.bet_id where l.market_id=$1 and b.status='open' order by 1`, [marketId])).rows;
+    for (const r of bets) await evaluateBet(c, r.bet_id);
+    return { graded: bets.length };
+  });
+}
+
 export async function reopenMarket(marketId: number) {
   return tx(async (c) => {
     const m = (await c.query(`select * from fd_markets where id = $1 for update`, [marketId])).rows[0];
@@ -376,7 +424,7 @@ export async function reopenMarket(marketId: number) {
       await c.query(`update fd_bets set status='open', payout=0, settled_at=null, seen_at=null where id=$1`, [id]);
     }
     await c.query(`update fd_legs set result='open' where market_id=$1`, [marketId]);
-    await c.query(`update fd_markets set status='locked', winner_option_id=null, settled_at=null where id=$1`, [marketId]);
+    await c.query(`update fd_markets set status='locked', winner_option_id=null, winner_ids=null, settled_at=null where id=$1`, [marketId]);
     for (const id of bets) await evaluateBet(c, id, true);
     await feed(c, 'reopen', `Correction: "${m.title}" result was reversed — being re-graded`, { market: marketId });
     return { reopened: bets.length };
@@ -391,14 +439,14 @@ function checkOdds(o: unknown): number {
   return n;
 }
 
-export async function createMarket(title: string, subtitle: string | null, lockAt: string | null, opts: { label: string; odds: number | string; blurb?: string }[]) {
+export async function createMarket(title: string, subtitle: string | null, lockAt: string | null, opts: { label: string; odds: number | string; blurb?: string }[], multi = false) {
   title = (title || '').trim();
   if (!title) throw new UserError('Give the line a title.');
   if (opts.length < 2) throw new UserError('Need at least 2 options.');
   const clean = opts.map((o) => ({ label: o.label.trim(), odds: checkOdds(o.odds), blurb: o.blurb?.trim() || null }));
   return tx(async (c) => {
     const s = (await c.query(`select coalesce(max(sort),0)+10 as s from fd_markets`)).rows[0].s;
-    const m = (await c.query(`insert into fd_markets (title, subtitle, sort, lock_at) values ($1,$2,$3,$4) returning id`, [title, subtitle || null, s, lockAt || null])).rows[0];
+    const m = (await c.query(`insert into fd_markets (title, subtitle, sort, lock_at, multi) values ($1,$2,$3,$4,$5) returning id`, [title, subtitle || null, s, lockAt || null, !!multi])).rows[0];
     let i = 0;
     for (const o of clean) await c.query(`insert into fd_options (market_id,label,odds,blurb,sort) values ($1,$2,$3,$4,$5)`, [m.id, o.label, o.odds, o.blurb, (i += 10)]);
     await feed(c, 'newline', `NEW LINE: "${title}" is on the board`, { market: m.id });

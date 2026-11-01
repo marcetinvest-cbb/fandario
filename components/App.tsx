@@ -5,7 +5,7 @@ import { Skyline } from './Skyline';
 import { InstallCard, IosInstallFirst } from './Install';
 
 type Opt = { id: number; market_id: number; label: string; blurb: string | null; odds: number; eff_odds: number; boosted: boolean; boost_until: string | null; active: boolean };
-type Market = { id: number; age_s?: number; created_at?: string; title: string; subtitle: string | null; status: string; is_open: boolean; lock_at: string | null; winner_option_id: number | null; options: Opt[] };
+type Market = { id: number; multi?: boolean; winner_ids?: number[] | null; age_s?: number; created_at?: string; title: string; subtitle: string | null; status: string; is_open: boolean; lock_at: string | null; winner_option_id: number | null; options: Opt[] };
 type Leg = { id: number; label: string; market_title: string; odds: number; result: string; option_id: number; market_id: number; market_open: boolean; boosted: boolean };
 type Bet = { id: number; player_id: number; player_name: string; stake: number; potential: number; payout: number; status: string; odds: number; legs: Leg[]; created_at: string; tailed_name: string | null; tailed_from: number | null };
 type Sel = { optionId: number; marketId: number; label: string; marketTitle: string; odds: number; boosted: boolean };
@@ -249,7 +249,7 @@ export default function App() {
     if (mine && !slip.some((x) => x.optionId === o.id)) flash(`Heads up — you're already on ${o.label} (${mine.n} ${mine.n === 1 ? 'bet' : 'bets'}, ${fmtMoney(mine.stake)}). Going again 👀`, 3500);
     setSlip((cur) => {
       if (cur.some((x) => x.optionId === o.id)) return cur.filter((x) => x.optionId !== o.id);
-      const same = cur.findIndex((x) => x.marketId === mk.id);
+      const same = mk.multi ? -1 : cur.findIndex((x) => x.marketId === mk.id);
       const sel: Sel = { optionId: o.id, marketId: mk.id, label: o.label, marketTitle: mk.title, odds: o.eff_odds, boosted: o.boosted };
       if (same >= 0) { const n = [...cur]; n[same] = sel; return n; }
       if (cur.length >= MAX_LEGS) { flash(`Max ${MAX_LEGS} legs — remove one first`); return cur; }
@@ -323,6 +323,7 @@ export default function App() {
                   </div>
                   {freshTag.has(m.id) && !(m.is_open && (m.age_s ?? 1e9) < HOT_SECS) && <span className="chip newchip">New</span>}
                   {inMarket.has(m.id) && <span className="chip inchip" title="You have a bet on this line">🎟️ In</span>}
+                  {m.multi && <span className="chip multichip">Stack picks</span>}
                   {m.is_open
                     ? <span className="chip open">{m.lock_at ? `Locks ${lockText(m.lock_at)}` : 'Open'}</span>
                     : <span className="chip lock">Locked</span>}
@@ -338,7 +339,8 @@ export default function App() {
                   <div className="t">{m.title}</div>
                   <span className={`chip ${m.status === 'void' ? 'void' : 'won'}`}>{m.status === 'void' ? 'Void' : 'Final'}</span>
                 </div>
-                {m.options.filter((o) => o.id === m.winner_option_id).map((o) => (
+                {m.multi && !(m.winner_ids ?? []).length && m.status !== 'void' && <div className="opt"><div className="who"><div className="n muted">Nobody hit</div></div></div>}
+                {m.options.filter((o) => (m.multi ? (m.winner_ids ?? []).includes(o.id) : o.id === m.winner_option_id)).map((o) => (
                   <div className="opt win" key={o.id}><div className="who"><div className="n">{o.label}</div></div><div className="odds">{fmtOdds(o.odds)}</div></div>
                 ))}
               </div>

@@ -347,3 +347,8 @@ h2.sec { font-family: var(--display); font-weight: 400; font-size: 20px; letter-
 .oddsin .sg.pos { background: rgba(46,230,214,.15); color: var(--teal); }
 .oddsin input { border: 0; border-radius: 0; background: transparent; padding-left: 8px; min-width: 0; }
 .pitch { margin-top: 12px; }
+
+.chip.multichip { background: rgba(255,209,102,.12); color: var(--gold); border: 1px solid rgba(255,209,102,.4); }
+.hitbox { display: inline-flex; align-items: center; gap: 6px; padding: 7px 10px; border-radius: 10px; border: 1px solid var(--line); background: rgba(10,14,36,.6); font-size: 13px; font-weight: 700; color: var(--text) !important; margin: 0 !important; }
+.hitbox input { width: auto; }
+.hitbox.on { border-color: var(--green); background: rgba(62,224,127,.12); }

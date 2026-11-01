@@ -37,6 +37,8 @@ create table if not exists fd_players (
   created_at timestamptz not null default now()
 );
 alter table fd_players add column if not exists pin text;
+alter table fd_markets add column if not exists multi boolean not null default false;
+alter table fd_markets add column if not exists winner_ids int[];
 create unique index if not exists fd_players_name on fd_players (lower(name)) where not removed;
 create table if not exists fd_markets (
   id serial primary key,
