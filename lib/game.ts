@@ -150,6 +150,20 @@ export function maintenance() {
         if (m) await updateMarket(m.id, { status: 'locked' });
       }
     });
+    // 2026-10-31: stadium results from Jay — Jumbotron: nobody, kicked out: nobody, beer spill: Jay (not listed → Field)
+    await runFix('grade-stadium-1031', async () => {
+      const g1 = async (title: string, label: string, rename?: string) => {
+        const m = (await q(`select id from fd_markets where title = $1 and status in ('open','locked')`, [title]))[0];
+        if (!m) return;
+        const o = (await q(`select id from fd_options where market_id = $1 and label = $2`, [m.id, label]))[0];
+        if (!o) { console.error('grade: missing', title, label); return; }
+        if (rename) await q(`update fd_options set label = $2 where id = $1`, [o.id, rename]);
+        await settleMarket(m.id, o.id);
+      };
+      await g1('First One on the Jumbotron / TV', 'Nobody');
+      await g1('First One Kicked Out or Warned by Security', 'Nobody');
+      await g1('First to Spill a Full Beer in the Stadium', 'Field', 'Field (Jay)');
+    });
   })().catch((e) => { g.__fdFix = undefined; console.error('maintenance', e); });
   return g.__fdFix;
 }
